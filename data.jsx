@@ -559,6 +559,27 @@ const CHAPTERS = [
       { zh: "结构化日志与采样的成本账", en: "Structured logging and the cost of sampling" },
     ],
   },
+  {
+    id: "sc30", code: "OB4", moduleId: "m6", difficulty: 3, hours: 5, prereq: ["sc16"], viz: "sampleLab",
+    props: ["头部采样", "尾部采样", "sampled 位传播", "OTel Collector", "成本 vs 可见性"],
+    title: { zh: "链路追踪采样:省钱,又不漏掉出事的那条", en: "Trace Sampling: Save Money Without Missing the One That Broke" },
+    summary: {
+      zh: "OB1 里你给每条请求打了 traceId、画出了瀑布图。但在生产的量级上,一个真相摆在面前:你不可能把每条请求的每个 span 都存下来——一秒一百万请求、每条十几个 span,存储、网络、导出开销都是天文数字。所以你必须采样:只留一部分 trace。问题是留哪部分。最简单的是头部采样:在请求进来的第一跳(网关)就掷一次骰子,决定这条 trace 要不要采,并把这个决定通过 traceparent 的 sampled 位传给下游所有服务——于是一条 trace 要么全采、要么全不采(一致性),简单又便宜。但它有个致命弱点:你在还不知道结果的时候就决定了,所以在 1% 采样率下,那条报错的、或者慢了 3 秒的关键 trace,有 99% 的概率被你丢掉。尾部采样反过来:先把一条 trace 的所有 span 都缓存起来,等它跑完、知道了结果,再决定留不留——于是你可以「错误全留、慢的全留、正常的只留 1%」,永远不会漏掉出事的那条。代价是你得有一个收集器把所有 span 都缓冲住直到 trace 完成,基础设施重得多,而且同一条 trace 的所有 span 必须落到同一个收集器。本章讲清为什么要采样、头部与尾部两种采样的机制与一致性要求、以及成本、可见性、基础设施之间的三角取舍。治理台让你在头部和尾部之间切换,看你到底捕获了多少出事的 trace、又花了多少存储。",
+      en: "In OB1 you stamped every request with a traceId and drew the waterfall. But at production scale a hard fact appears: you cannot store every span of every request — a million requests a second, a dozen spans each, and the storage, network and export costs are astronomical. So you must sample: keep only some traces. The question is which. The simplest is head-based sampling: at the first hop (the gateway) you roll a die to decide whether this trace is sampled, and propagate that decision to every downstream service through the sampled bit of traceparent — so a trace is all-sampled or none (consistency), simple and cheap. But it has a fatal weakness: you decide before you know the outcome, so at a 1% rate the one trace that errored, or was 3 seconds slow, has a 99% chance of being dropped. Tail-based sampling inverts this: buffer all of a trace's spans first, wait until it completes and the outcome is known, and only then decide — so you can 'keep every error, keep every slow one, keep 1% of the rest' and never miss the one that broke. The cost is that you need a collector holding all spans until the trace completes, much heavier infrastructure, and all spans of a trace must reach the same collector. This chapter covers why you sample, the mechanism and consistency requirement of head and tail sampling, and the triangle of cost, visibility and infrastructure. The bench lets you switch between head and tail and watch how many of the incidents you actually captured, and how much storage it cost.",
+    },
+    objectives: [
+      { zh: "解释为什么大规模下必须对 trace 采样", en: "Explain why traces must be sampled at scale" },
+      { zh: "说清头部采样的机制、sampled 位传播与一致性", en: "State the mechanism of head sampling, sampled-bit propagation and consistency" },
+      { zh: "说清尾部采样如何保证不漏掉出错/慢的 trace", en: "State how tail sampling never misses an errored or slow trace" },
+      { zh: "在成本、可见性、基础设施之间权衡采样策略", en: "Trade sampling strategy across cost, visibility and infrastructure" },
+    ],
+    outline: [
+      { zh: "为什么要采样:每条都存存不起", en: "Why sample: keeping everything is unaffordable" },
+      { zh: "头部采样:在起点决定并传播 sampled 位", en: "Head sampling: decide at the head, propagate the sampled bit" },
+      { zh: "尾部采样:等 trace 完成再决定,留住错误", en: "Tail sampling: decide after completion, keep the errors" },
+      { zh: "取舍:成本、可见性、收集器缓冲", en: "Trade-offs: cost, visibility, collector buffering" },
+    ],
+  },
 
   /* ============ M7 · OP 部署、弹性伸缩与多机房 ============ */
   {

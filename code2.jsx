@@ -944,3 +944,60 @@ return { allowed and 1 or 0, new }`,
     },
   ],
 };
+
+/* ============ OB4 · sc30 — trace sampling ============ */
+CODE.sc30 = {
+  note: {
+    zh: "两种采样,两种代码。头部采样是一行 Spring 配置:采样概率 + 默认的 parent-based 采样器(下游服从收到的 sampled 位,不重新决定),便宜、一致,但决定得早、对错误一视同仁。尾部采样住在 OpenTelemetry Collector 里:所有 span 先缓冲,等 trace 完成后按策略决定——错误 100% 留、慢的 100% 留、其余采 1%。第三段是那个决定藏在哪:traceparent 的 flags 字节最后一位就是 sampled。",
+    en: "Two samplings, two kinds of code. Head sampling is one line of Spring config: a probability plus the default parent-based sampler (downstream honors the sampled bit it received rather than re-deciding) — cheap and consistent, but decided early and blind to errors. Tail sampling lives in the OpenTelemetry Collector: all spans buffer, and after the trace completes policies decide — 100% of errors, 100% of slow, 1% of the rest. The third listing is where the decision hides: the last bit of traceparent's flags byte is 'sampled'.",
+  },
+  tabs: [
+    {
+      lang: "head (Spring)", k: "yaml", file: "application.yml",
+      src: `# HEAD sampling — decided once, at the start, then propagated downstream.
+management:
+  tracing:
+    sampling:
+      probability: 0.10        # keep 10% of traces, uniformly
+# The sampler is parent-based by default: a service HONORS the sampled bit it
+# received (in traceparent) instead of re-deciding — so a trace is all-or-nothing.
+# Cheap and simple, but the decision is made BEFORE the outcome is known:
+# probability 0.10 keeps ~10% of errors too, not "all errors".`,
+    },
+    {
+      lang: "tail (Collector)", k: "yaml", file: "otel-collector.yaml",
+      src: `# TAIL sampling — the Collector buffers every span until the trace completes,
+# then applies policies: keep the interesting ones, sample the rest.
+processors:
+  tail_sampling:
+    decision_wait: 10s          # hold spans this long, waiting for the trace to finish
+    policies:
+      - name: keep-errors
+        type: status_code
+        status_code: { status_codes: [ ERROR ] }     # 100% of errors
+      - name: keep-slow
+        type: latency
+        latency: { threshold_ms: 800 }                # 100% of slow traces
+      - name: sample-the-rest
+        type: probabilistic
+        probabilistic: { sampling_percentage: 1 }     # 1% of everything else
+# Requirement: ALL spans of a trace must reach the SAME collector instance,
+# so route by traceId (e.g. a load-balancing exporter in front).`,
+    },
+    {
+      lang: "traceparent", k: "properties", file: "traceparent.txt",
+      src: `# W3C traceparent — the decision travels in one header, in the flags byte
+#
+#   traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+#                ^^ ^------------ trace-id ------------^ ^-- span-id --^ ^^
+#                version                                                flags
+#
+#   flags last bit = SAMPLED:   ...-01  sampled  (record + export)
+#                               ...-00  not sampled (drop)
+#
+# HEAD: the first service sets this bit; every downstream honors it (parent-based)
+#       -> consistent: all spans of the trace share one decision.
+# TAIL: everyone records; the COLLECTOR decides at the end, not this bit.`,
+    },
+  ],
+};

@@ -509,6 +509,78 @@ function MqViz() {
   );
 }
 
+/* =========================================================
+   sc30 · sampleLab — head vs tail trace sampling
+   ========================================================= */
+function SampleViz() {
+  const L = useL();
+  const [traffic, setTraffic] = React.useState(100000);   // traces/s
+  const [interesting, setInteresting] = React.useState(2); // % errored/slow
+  const [rate, setRate] = React.useState(1);               // % sampled (non-interesting)
+  const [spans, setSpans] = React.useState(10);
+  const [mode, setMode] = React.useState("head");
+
+  const p = rate / 100;
+  const interestingTraces = traffic * interesting / 100;
+  const normalTraces = traffic - interestingTraces;
+  const headKept = traffic * p;
+  const tailKept = interestingTraces + normalTraces * p;
+  const kept = mode === "head" ? headKept : tailKept;
+  const errPct = mode === "head" ? p : 1;
+  const storageGB = (k) => k * spans * 400 * 86400 / 1e9;   // 400 B/span
+  const curStorage = storageGB(kept);
+
+  const DOTS = 20;
+  const captured = Math.round(DOTS * errPct);
+
+  return (
+    <div>
+      <VizHead idx="OB4" title={L("头部 vs 尾部采样:你到底留住了出事的那条吗", "Head vs tail sampling: did you keep the one that broke")} />
+      <div className="viz-ctrl">
+        <Slider label={L("请求量", "Traffic")} min={1000} max={500000} step={1000} value={traffic} onChange={setTraffic} fmt={(v) => big(v) + "/s"} />
+        <Slider label={L("出错/慢的比例", "Errored/slow rate")} min={0.1} max={10} step={0.1} value={interesting} onChange={setInteresting} fmt={(v) => nf(v, 1) + "%"} />
+        <Slider label={L("采样率(普通请求)", "Sample rate (normal)")} min={0.1} max={100} step={0.1} value={rate} onChange={setRate} fmt={(v) => nf(v, 1) + "%"} />
+        <Slider label={L("每条 span 数", "Spans per trace")} min={3} max={20} value={spans} onChange={setSpans} />
+        <label><span>{L("采样方式", "Sampling")}</span><Seg value={mode} onChange={setMode} options={[{ v: "head", l: L("头部 head", "head-based") }, { v: "tail", l: L("尾部 tail", "tail-based") }]} /></label>
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("保留的 trace", "Traces kept")} value={big(kept)} unit="/s" tone="acc" />
+        <Kpi label={L("捕获的错误", "Errors captured")} value={mode === "head" ? pct1(errPct) : "100%"} tone={mode === "head" && errPct < 0.5 ? "warn" : "ok"} hint={mode === "head" ? L("和采样率一样低", "as low as the rate") : L("一条不漏", "none missed")} />
+        <Kpi label={L("存储/天", "Storage/day")} value={nf(curStorage, 0)} unit=" GB" tone={curStorage > 800 ? "warn" : "ok"} />
+        <Kpi label={L("收集器缓冲", "Collector buffer")} value={mode === "head" ? L("无", "none") : L("全部 in-flight", "all in-flight")} tone={mode === "head" ? "ok" : "acc"} hint={mode === "head" ? L("起点即决定", "decided at head") : L("缓冲到 trace 完成", "held till trace ends")} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("这一窗口的 20 条「出事」trace,你捕获了几条(● 留住 · ○ 漏掉)", "20 'incident' traces this window — how many you captured (● kept · ○ missed)")}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+          {Array.from({ length: DOTS }, (_, i) => {
+            const lit = i < captured;
+            return <div key={i} title={lit ? "kept" : "missed"} style={{ width: 22, height: 22, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px var(--f-mono)", color: "#fff",
+              background: lit ? "#c0453f" : "color-mix(in srgb,#c0453f 18%,transparent)", border: "1px solid #c0453f", opacity: lit ? 1 : 0.5 }}>{lit ? "●" : "○"}</div>;
+          })}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("存储/天:头部 vs 尾部(尾部多存了错误+慢的)", "storage/day: head vs tail (tail also keeps errors + slow)")}</div>
+        <Bar label={L("头部采样", "head-based")} value={storageGB(headKept)} max={Math.max(storageGB(headKept), storageGB(tailKept))} tone={mode === "head" ? "acc" : "mut"} valText={nf(storageGB(headKept), 0) + " GB"} />
+        <Bar label={L("尾部采样", "tail-based")} value={storageGB(tailKept)} max={Math.max(storageGB(headKept), storageGB(tailKept))} tone={mode === "tail" ? "acc" : "mut"} valText={nf(storageGB(tailKept), 0) + " GB"} />
+      </div>
+
+      <Note mark="→" tone={mode === "head" && errPct < 0.5 ? "bad" : "on"}>
+        {mode === "head"
+          ? (errPct < 0.5
+            ? L(`头部采样在 ${nf(rate, 1)}% 下,把这 20 条出事的 trace 捕获了 ${captured} 条——其余全丢了。因为决定是在请求刚进来、还不知道结果时就掷骰子做的,对错误一视同仁。它简单又便宜(sampled 位随 traceparent 传下去,一条 trace 要么全采要么全不采),但你想查的那次故障,大概率没被采到。`,
+              `Head sampling at ${nf(rate, 1)}% captured ${captured} of these 20 incident traces — it dropped the rest. Because the decision is a die roll at the moment the request arrives, before the outcome is known, it treats errors like everything else. It is simple and cheap (the sampled bit rides traceparent, so a trace is all-or-nothing), but the failure you want to investigate was probably never sampled.`)
+            : L("头部采样:采样率调高了,自然多留住一些错误——但这也意味着多存了很多无聊的正常 trace。头部采样的本质矛盾就在这:想不漏掉错误,就得调高采样率,而调高采样率就得为海量正常请求付存储。", "Head sampling: a higher rate keeps more errors — but also stores far more boring normal traces. That is head sampling's inherent tension: to avoid missing errors you raise the rate, and raising the rate pays storage for a flood of normal requests."))
+          : L(`尾部采样:先缓存一条 trace 的所有 span,等它跑完、知道了结果,再决定——于是错误和慢的 100% 留住(这 20 条全captured),正常的只留 ${nf(rate, 1)}%。你再也不会漏掉出事的那条。代价:要一个收集器把所有 in-flight 的 span 都缓冲住直到 trace 完成(基础设施重得多),而且同一条 trace 的所有 span 必须路由到同一个收集器,存储也比头部略高(${nf(storageGB(tailKept), 0)} vs ${nf(storageGB(headKept), 0)} GB/天)。`,
+              `Tail sampling: buffer all of a trace's spans, wait until it completes and the outcome is known, then decide — so errors and slow traces are kept 100% (all 20 captured here) and normal traces only ${nf(rate, 1)}%. You never miss the one that broke. The cost: a collector must buffer every in-flight span until the trace completes (much heavier infrastructure), all spans of a trace must route to the same collector, and storage is a bit higher than head (${nf(storageGB(tailKept), 0)} vs ${nf(storageGB(headKept), 0)} GB/day).`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module V–VI benches ---------------- */
 window.__SC_VIZ_3 = {
   streamLab: StreamViz,
@@ -518,4 +590,5 @@ window.__SC_VIZ_3 = {
   sloLab: SloViz,
   logLab: LogViz,
   mqLab: MqViz,
+  sampleLab: SampleViz,
 };

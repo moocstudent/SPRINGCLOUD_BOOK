@@ -233,6 +233,39 @@ FIGN["sc27-mesh"] = function ({ idx }) {
   );
 };
 
+/* ---------------- sc30 · head vs tail sampling ---------------- */
+FIGN["sc30-sample"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={214} cap={L("头部采样在请求刚进来时就掷骰子决定采不采,把决定通过 traceparent 的 sampled 位传给全链路——简单便宜、一条 trace 全采或全不采,但你在还不知道结果时就决定了,那条出错的可能被丢。尾部采样先把所有 span 缓存进收集器,等 trace 完成、知道了结果再决定——错误和慢的全留,代价是重得多的缓冲。", "Head sampling rolls the die when the request arrives and propagates the decision to the whole chain via the sampled bit of traceparent — simple, cheap, all-or-nothing per trace, but you decide before you know the outcome, so the errored one may be dropped. Tail sampling buffers all spans in a collector and decides after the trace completes and the outcome is known — keeping every error and slow trace, at the cost of much heavier buffering.")}>
+      {/* head */}
+      <text x={168} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "#d98a1f" }}>{L("头部采样 · 起点决定", "head-based · decide at head")}</text>
+      <FBox x={28} y={54} w={104} h={44} label={L("网关", "gateway")} sub={L("掷骰 10%", "roll 10%")} tone="warn" />
+      <FArrow x1={132} y1={76} x2={214} y2={60} c="var(--muted)" />
+      <FArrow x1={132} y1={82} x2={214} y2={110} c="#c0453f" />
+      <FT x={175} y={44} cls="tn">{L("sampled 位传播", "sampled bit →")}</FT>
+      <FBox x={216} y={46} w={104} h={28} label={L("普通 · 采", "normal · kept")} tone="ok" />
+      <FBox x={216} y={96} w={104} h={28} label={L("出错 · 被丢", "error · dropped")} tone="bad" />
+      <FT x={168} y={150} cls="tk">{L("对错误一视同仁 → 可能丢掉故障", "blind to outcome → may drop the failure")}</FT>
+
+      <line x1={338} y1={28} x2={338} y2={196} stroke="var(--hairline-strong)" strokeDasharray="4 3" />
+
+      {/* tail */}
+      <text x={510} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--primary)" }}>{L("尾部采样 · 完成后决定", "tail-based · decide after")}</text>
+      {[0, 1, 2].map((i) => (
+        <g key={i}>
+          <FBox x={356} y={40 + i * 34} w={78} h={26} label={`svc-${i + 1}`} tone="p" />
+          <FArrow x1={434} y1={53 + i * 34} x2={480} y2={92} c="var(--muted)" />
+        </g>
+      ))}
+      <FBox x={482} y={68} w={96} h={50} label={L("收集器", "collector")} sub={L("缓冲全部 span", "buffer all spans")} tone="a" />
+      <FArrow x1={578} y1={93} x2={606} y2={93} c="var(--muted)" />
+      <FT x={612} y={70} anchor="end" cls="tn">✓</FT>
+      <FT x={510} y={150} cls="tk">{L("错误全留 · 正常 p%", "keep all errors · normal p%")}</FT>
+    </FigFrame>
+  );
+};
+
 /* =========================================================
    <Figure> — resolves a name to a registered figure component
    ========================================================= */
