@@ -404,6 +404,111 @@ function LogViz() {
   );
 }
 
+/* =========================================================
+   sc25 · mqLab — Kafka vs RabbitMQ chooser
+   ========================================================= */
+function MqViz() {
+  const L = useL();
+  const [tput, setTput] = React.useState(30000);   // target msg/s
+  const [replay, setReplay] = React.useState(false);
+  const [routing, setRouting] = React.useState(false);
+  const [order, setOrder] = React.useState(false);
+  const rabbitCeil = 60000;                          // model ceiling for a classic queue
+
+  const meetsRabbit = tput <= rabbitCeil;
+  // requirement axes: each contributes to a broker's fit and names a winner
+  const axes = [
+    { key: "tput", label: L("吞吐量", "throughput"), active: true,
+      kd: tput > rabbitCeil ? 26 : tput > rabbitCeil * 0.4 ? 8 : 2,
+      rd: tput > rabbitCeil ? -22 : tput > rabbitCeil * 0.4 ? 0 : 6,
+      k: L("极高 · 随分区扩展", "very high · scales w/ partitions"),
+      r: meetsRabbit ? L("够用", "adequate") : L("触顶", "ceiling hit"),
+      win: tput > rabbitCeil ? "k" : "tie" },
+    { key: "replay", label: L("消息回放", "replay"), active: replay,
+      kd: replay ? 18 : 0, rd: replay ? -24 : 0,
+      k: L("按 offset 重读", "rewind by offset"), r: L("确认即删,默认不支持", "acked = gone"), win: "k" },
+    { key: "routing", label: L("复杂路由", "complex routing"), active: routing,
+      kd: routing ? -14 : 0, rd: routing ? 24 : 0,
+      k: L("主题 + key,消费端过滤", "topic + key, filter in consumer"), r: L("交换机 direct/topic/fanout", "exchanges direct/topic/fanout"), win: "r" },
+    { key: "order", label: L("严格顺序", "strict order"), active: order,
+      kd: order ? 14 : 0, rd: order ? -8 : 0,
+      k: L("分区内有序", "ordered per partition"), r: L("队列内有序,竞争易乱", "per-queue, competing reorders"), win: "k" },
+  ];
+  const descAxes = [
+    { label: L("投递模型", "delivery"), k: L("拉 + 提交 offset", "pull + commit offset"), r: L("推 + 逐条 ack", "push + per-msg ack") },
+    { label: L("消费者扩展", "consumer scaling"), k: L("≤ 分区数", "≤ partitions"), r: L("单队列自由竞争", "free on one queue") },
+    { label: L("典型延迟", "latency"), k: L("毫秒级(批量)", "ms (batched)"), r: L("更低(逐条推)", "lower (per-msg)") },
+  ];
+
+  let k = 50, r = 50;
+  axes.forEach((a) => { k += a.kd; r += a.rd; });
+  k = clamp(k, 3, 100); r = clamp(r, 3, 100);
+  const rec = k > r + 6 ? "kafka" : r > k + 6 ? "rabbit" : "either";
+  const decider = axes.filter((a) => a.active && (a.kd || a.rd)).sort((a, b) => Math.abs(b.kd - b.rd) - Math.abs(a.kd - a.rd))[0];
+
+  const Cell = ({ text, winner }) => (
+    <div style={{ flex: 1, padding: "5px 8px", font: "500 10.5px var(--f-mono)", borderRadius: 4,
+      background: winner ? "color-mix(in srgb, #2e9e6b 16%, transparent)" : "transparent",
+      color: winner ? "var(--ink)" : "var(--muted)", border: winner ? "1px solid color-mix(in srgb,#2e9e6b 45%,transparent)" : "1px solid transparent" }}>
+      {winner ? "✓ " : ""}{text}
+    </div>
+  );
+
+  return (
+    <div>
+      <VizHead idx="TX4" title={L("Kafka vs RabbitMQ:按工作负载选中间件", "Kafka vs RabbitMQ: choose the broker by workload")} />
+      <div className="viz-ctrl">
+        <Slider label={L("吞吐目标", "Throughput target")} min={1000} max={500000} step={1000} value={tput} onChange={setTput} fmt={(v) => big(v) + "/s"} />
+        <Toggle label={L("需要消息回放/重放", "Need replay")} value={replay} onChange={setReplay} />
+        <Toggle label={L("需要复杂路由", "Need complex routing")} value={routing} onChange={setRouting} />
+        <Toggle label={L("需要严格顺序", "Need strict ordering")} value={order} onChange={setOrder} />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("Kafka 契合度", "Kafka fit")} value={nf(k, 0)} unit="%" tone={k >= r ? "ok" : ""} />
+        <Kpi label={L("RabbitMQ 契合度", "RabbitMQ fit")} value={nf(r, 0)} unit="%" tone={r > k ? "ok" : ""} />
+        <Kpi label={L("推荐", "Recommendation")} value={rec === "kafka" ? "Kafka" : rec === "rabbit" ? "RabbitMQ" : L("两者皆可", "either")} tone="acc" />
+        <Kpi label={L("决定性因素", "Deciding factor")} value={decider ? decider.label : (tput > rabbitCeil ? L("吞吐量", "throughput") : L("需求相近", "close call"))} tone="warn" />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <Bar label="Kafka" value={k} max={100} tone={k >= r ? "ok" : "mut"} valText={nf(k, 0) + "%"} />
+        <Bar label="RabbitMQ" value={r} max={100} tone={r > k ? "ok" : "mut"} valText={nf(r, 0) + "%"} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ display: "flex", gap: 6, padding: "0 8px 3px", font: "600 10px var(--f-mono)", color: "var(--muted)" }}>
+          <div style={{ width: 92 }} /><div style={{ flex: 1 }}>Kafka</div><div style={{ flex: 1 }}>RabbitMQ</div>
+        </div>
+        {axes.map((a) => (
+          <div key={a.key} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3,
+            padding: a.active ? "2px 0 2px 4px" : "2px 0", borderLeft: a.active ? "2px solid var(--accent)" : "2px solid transparent" }}>
+            <div style={{ width: 88, font: `${a.active ? 700 : 500} 10.5px var(--f-mono)`, color: a.active ? "var(--ink)" : "var(--muted)" }}>{a.label}{a.active ? " ●" : ""}</div>
+            <Cell text={a.k} winner={a.active && a.win === "k"} />
+            <Cell text={a.r} winner={a.active && a.win === "r"} />
+          </div>
+        ))}
+        {descAxes.map((a, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3 }}>
+            <div style={{ width: 88, font: "500 10.5px var(--f-mono)", color: "var(--muted)" }}>{a.label}</div>
+            <Cell text={a.k} /><Cell text={a.r} />
+          </div>
+        ))}
+      </div>
+
+      <Note mark="→" tone="on">
+        {rec === "kafka"
+          ? L(`按你勾的要求,Kafka 更合适——${decider ? "决定性因素是「" + decider.label + "」。" : "主要是吞吐。"}Kafka 的分区日志天生适合高吞吐事件流、事件溯源和可重放的场景;代价是路由只有主题+key、消费并行度被分区数封顶。`,
+              `For the requirements you ticked, Kafka fits better — ${decider ? "the deciding factor is '" + decider.label + "'. " : "mainly throughput. "}Kafka's partitioned log is built for high-throughput event streams, event sourcing and replayable workloads; the price is routing limited to topic+key and consumer parallelism capped by partitions.`)
+          : rec === "rabbit"
+          ? L(`按你勾的要求,RabbitMQ 更合适——${decider ? "决定性因素是「" + decider.label + "」。" : ""}RabbitMQ 的交换机-队列模型天生适合复杂路由、任务分发和需要逐条确认的场景;代价是吞吐上限更低、且确认后的消息默认无法重放。`,
+              `For the requirements you ticked, RabbitMQ fits better — ${decider ? "the deciding factor is '" + decider.label + "'. " : ""}RabbitMQ's exchange-queue model is built for complex routing, task distribution and per-message acking; the price is a lower throughput ceiling and no replay of acked messages by default.`)
+          : L("你的要求两者都能满足,契合度接近——这时可以先按团队熟悉度选,反正 Spring Cloud Stream 的 binder 让你以后换中间件只改配置、不改代码。真正逼你选边的,是「要回放」「要复杂路由」「吞吐触顶」这几个硬需求。", "Both brokers meet your requirements and the fit is close — pick by team familiarity, since Spring Cloud Stream's binder lets you switch later by config, not code. What actually forces the choice is a hard requirement: replay, complex routing, or a throughput ceiling.")}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module V–VI benches ---------------- */
 window.__SC_VIZ_3 = {
   streamLab: StreamViz,
@@ -412,4 +517,5 @@ window.__SC_VIZ_3 = {
   traceLab: TraceViz,
   sloLab: SloViz,
   logLab: LogViz,
+  mqLab: MqViz,
 };

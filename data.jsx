@@ -410,6 +410,27 @@ const CHAPTERS = [
       { zh: "发件箱模式:让事件和数据同生共死", en: "The outbox pattern: event and data live and die together" },
     ],
   },
+  {
+    id: "sc25", code: "TX4", moduleId: "m5", difficulty: 2, hours: 6, prereq: ["sc13"], viz: "mqLab",
+    props: ["Kafka 分区日志", "RabbitMQ 交换机路由", "消息回放", "推 vs 拉与确认", "选型"],
+    title: { zh: "Kafka 还是 RabbitMQ:两种消息中间件的取舍", en: "Kafka or RabbitMQ: Choosing Between Two Brokers" },
+    summary: {
+      zh: "上一章的 Spring Cloud Stream 用统一的编程模型屏蔽了底层是 Kafka 还是 RabbitMQ——换一个 binder,代码一行不改。但「代码一样」不代表「行为一样」:这两个中间件的内核是两种完全不同的东西,选错了,轻则性能上不去,重则你要的能力它根本不提供。Kafka 本质是一个分布式的分区提交日志:消息按分区顺序追加、按保留期留存,消费者用 offset 自己拉、能倒回去重放,吞吐随分区水平扩展、但消费并行度被分区数封顶——它天生适合高吞吐的事件流、事件溯源、日志聚合。RabbitMQ 本质是一个智能 broker:生产者把消息发给交换机(exchange),交换机按 direct/topic/fanout 规则路由到队列,消费者被推送、逐条 ack,竞争消费者可以在一个队列上自由扩展、但消息一旦被确认就删除、默认无法重放——它天生适合复杂路由、任务分发、请求-应答、以及需要逐条确认的场景。本章把这两套模型逐条摆开,治理台让你输入工作负载的要求(吞吐、是否要回放、路由是否复杂、是否要严格顺序),现算出各自的契合度和那个决定性的取舍。",
+      en: "The previous chapter's Spring Cloud Stream hid whether the substrate is Kafka or RabbitMQ behind one programming model — swap the binder and not a line of code changes. But 'same code' does not mean 'same behaviour': these two brokers are built on completely different cores, and choosing wrong either caps your throughput or fails to provide a capability you needed. Kafka is essentially a distributed, partitioned commit log: messages are appended in order per partition and kept for a retention period, consumers pull by offset and can rewind to replay, throughput scales horizontally with partitions but consumer parallelism is capped by the partition count — it is built for high-throughput event streams, event sourcing and log aggregation. RabbitMQ is essentially a smart broker: producers publish to an exchange, which routes to queues by direct/topic/fanout rules, consumers are pushed messages and ack each one, competing consumers scale freely on a single queue but a message is deleted once acked and by default cannot be replayed — it is built for complex routing, task distribution, request-reply and anything needing per-message acknowledgement. This chapter lays the two models out side by side, and the bench takes your workload's requirements (throughput, replay, routing complexity, strict ordering) and computes each broker's fit and the deciding trade-off.",
+    },
+    objectives: [
+      { zh: "解释 Kafka 的分区日志模型与 RabbitMQ 的交换机-队列模型的根本区别", en: "Explain the fundamental difference between Kafka's partitioned log and RabbitMQ's exchange-queue model" },
+      { zh: "说清消息回放、投递方式(拉/推)、确认与顺序保证在两者中如何不同", en: "State how replay, delivery (pull/push), acking and ordering differ between the two" },
+      { zh: "根据吞吐、路由、回放、顺序的要求选出合适的中间件", en: "Choose the right broker from throughput, routing, replay and ordering requirements" },
+      { zh: "理解为什么 Stream 的 binder 让「换中间件」很便宜,但选型仍很重要", en: "Understand why Stream's binder makes 'switching brokers' cheap, yet the choice still matters" },
+    ],
+    outline: [
+      { zh: "两种内核:分区日志 vs 智能 broker", en: "Two cores: a partitioned log vs a smart broker" },
+      { zh: "回放、顺序、确认:同一个词,两种含义", en: "Replay, ordering, acking: one word, two meanings" },
+      { zh: "路由:Kafka 的 key vs RabbitMQ 的交换机", en: "Routing: Kafka's key vs RabbitMQ's exchanges" },
+      { zh: "按工作负载选型;以及 Stream 让你晚点再决定", en: "Choosing by workload; and how Stream lets you decide later" },
+    ],
+  },
 
   /* ============ M6 · OB 可观测性 ============ */
   {

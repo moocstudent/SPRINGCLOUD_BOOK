@@ -662,3 +662,73 @@ open http://localhost:9411
     },
   ],
 };
+
+/* ============ TX4 · sc25 — Kafka vs RabbitMQ ============ */
+CODE.sc25 = {
+  note: {
+    zh: "Spring Cloud Stream 的威力在这里体现:同一段函数式代码,换一个 binder 依赖、改一段 YAML,就能从 Kafka 切到 RabbitMQ,业务代码一行不动。但两段 YAML 长得不一样,恰恰暴露了两者的内核:Kafka 配的是分区、消费组、offset 起点;RabbitMQ 配的是交换机类型、路由键、绑定——选型决定的是能力,binder 决定的只是接线。",
+    en: "This is where Spring Cloud Stream earns its keep: the same functional code moves from Kafka to RabbitMQ by swapping a binder dependency and a slice of YAML, with the business code untouched. But the two YAMLs look different, and that difference exposes the two cores: Kafka configures partitions, consumer groups and the offset start; RabbitMQ configures the exchange type, routing key and bindings. The choice decides the capability; the binder decides only the wiring.",
+  },
+  tabs: [
+    {
+      lang: "Java", k: "java", file: "OrderEvents.java",
+      run: "// identical for Kafka AND RabbitMQ — the binder is a config choice",
+      src: `// PRODUCER
+@Service
+class OrderService {
+    private final StreamBridge bus;
+    OrderService(StreamBridge bus){ this.bus = bus; }
+    void place(Order o){ bus.send("orderCreated-out-0", new OrderCreated(o.id())); }
+}
+
+// CONSUMER — a bean named after the binding
+@Bean
+Consumer<OrderCreated> points(){
+    return evt -> loyalty.award(evt.customerId(), 10);
+}
+// Not one line here mentions Kafka or RabbitMQ. Switching brokers is a
+// dependency swap (spring-cloud-stream-binder-kafka <-> -rabbit) plus YAML.`,
+    },
+    {
+      lang: "kafka.yml", k: "yaml", file: "application-kafka.yml",
+      src: `spring:
+  cloud:
+    stream:
+      bindings:
+        orderCreated-out-0: { destination: order.created }
+        points-in-0:
+          destination: order.created
+          group: loyalty
+          consumer: { concurrency: 3 }        # capped by partition count
+      kafka:
+        binder: { brokers: kafka:9092 }
+        bindings:
+          orderCreated-out-0:
+            producer: { partition-count: 4 }   # throughput scales with partitions
+          points-in-0:
+            consumer: { start-offset: earliest } # replay: re-read from offset 0`,
+    },
+    {
+      lang: "rabbit.yml", k: "yaml", file: "application-rabbit.yml",
+      src: `spring:
+  cloud:
+    stream:
+      bindings:
+        orderCreated-out-0: { destination: order.created }
+        points-in-0:
+          destination: order.created
+          group: loyalty                       # -> a durable queue bound to the exchange
+      rabbit:
+        bindings:
+          orderCreated-out-0:
+            producer:
+              exchange-type: topic             # routing lives in the exchange
+              routing-key-expression: headers['region']
+          points-in-0:
+            consumer:
+              # once acked a message is gone — no "start-offset: earliest" here,
+              # because RabbitMQ classic queues cannot rewind. (Streams plugin can.)
+              acknowledge-mode: AUTO`,
+    },
+  ],
+};

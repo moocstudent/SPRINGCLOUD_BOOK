@@ -149,3 +149,44 @@ FIGN["sc16-trace"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc25 · Kafka vs RabbitMQ ---------------- */
+FIGN["sc25-mq"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={228} cap={L("Kafka 是分区提交日志:消息按序追加、按保留期留存,消费者用 offset 自己拉、能倒回去重放,吞吐随分区扩展。RabbitMQ 是智能 broker:生产者发给交换机,按规则路由到队列,消费者被推送、逐条 ack,消息一旦确认就删除、默认不能重放。", "Kafka is a partitioned commit log: messages are appended in order and kept for a retention period, consumers pull by offset and can rewind to replay, throughput scales with partitions. RabbitMQ is a smart broker: producers publish to an exchange, it routes to queues by rules, consumers are pushed messages and ack each one, and a message is deleted once acked — no replay by default.")}>
+      {/* Kafka side */}
+      <text x={168} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--primary)" }}>Kafka · {L("分区日志", "partitioned log")}</text>
+      <FBox x={20} y={44} w={64} h={34} label={L("生产者", "producer")} tone="m" />
+      <FArrow x1={84} y1={61} x2={104} y2={61} c="var(--muted)" />
+      {[0, 1, 2, 3, 4].map((o) => (
+        <g key={o}>
+          <rect x={106 + o * 44} y={46} width={42} height={30} rx="3" fill="color-mix(in srgb, var(--primary) 14%, transparent)" stroke="var(--primary)" />
+          <text x={127 + o * 44} y={65} textAnchor="middle" style={{ font: "600 11px var(--f-mono)", fill: "var(--ink)" }}>{o}</text>
+        </g>
+      ))}
+      <FT x={106 + 2 * 44 + 20} y={40} cls="tn">{L("offset(追加,保留)", "offset (append, retained)")}</FT>
+      <FArrow x1={127 + 4 * 44} y1={96} x2={127 + 4 * 44} y2={80} c="#2e9e6b" />
+      <FT x={127 + 4 * 44} y={110} cls="tn">{L("消费者A · 最新", "consumer A · head")}</FT>
+      <FArrow x1={127 + 1 * 44} y1={130} x2={127 + 1 * 44} y2={80} c="#d98a1f" />
+      <FT x={127 + 1 * 44} y={144} cls="tk">{L("消费者B · 回放", "consumer B · replay")}</FT>
+
+      <line x1={334} y1={30} x2={334} y2={210} stroke="var(--hairline-strong)" strokeDasharray="4 3" />
+
+      {/* RabbitMQ side */}
+      <text x={508} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--accent)" }}>RabbitMQ · {L("交换机路由", "exchange routing")}</text>
+      <FBox x={352} y={70} w={60} h={34} label={L("生产者", "producer")} tone="m" />
+      <FArrow x1={412} y1={87} x2={432} y2={87} c="var(--muted)" />
+      <FBox x={434} y={68} w={66} h={40} label={L("交换机", "exchange")} sub="topic" tone="a" />
+      <FArrow x1={500} y1={80} x2={528} y2={58} c="var(--muted)" />
+      <FArrow x1={500} y1={96} x2={528} y2={118} c="var(--muted)" />
+      <FBox x={530} y={42} w={70} h={30} label={L("队列1", "queue 1")} tone="a" />
+      <FBox x={530} y={104} w={70} h={30} label={L("队列2", "queue 2")} tone="a" />
+      <FArrow x1={600} y1={57} x2={624} y2={57} c="var(--muted)" />
+      <FArrow x1={600} y1={119} x2={624} y2={119} c="var(--muted)" />
+      <text x={634} y={61} textAnchor="middle" style={{ font: "600 11px var(--f-mono)", fill: "#2e9e6b" }}>✓</text>
+      <text x={634} y={123} textAnchor="middle" style={{ font: "600 11px var(--f-mono)", fill: "#2e9e6b" }}>✓</text>
+      <FT x={545} y={160} cls="tk">{L("逐条 ack → 删除,不可重放", "ack each → deleted, no replay")}</FT>
+    </FigFrame>
+  );
+};
