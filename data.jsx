@@ -408,6 +408,27 @@ const CHAPTERS = [
       { zh: "代价:Redis 往返、热点、本地+全局混合", en: "The cost: Redis round-trip, hotspot, local+global hybrid" },
     ],
   },
+  {
+    id: "sc31", code: "GW6", moduleId: "m4", difficulty: 2, hours: 5, prereq: ["sc12"], viz: "driftLab",
+    props: ["配置漂移", "声明式 GitOps", "配置指纹/审计", "自动纠偏 selfHeal", "不可变基础设施"],
+    title: { zh: "配置漂移检测:让运行的和声明的不再各走各的", en: "Config Drift Detection: Keeping Running State True to Declared State" },
+    summary: {
+      zh: "GW3 讲了配置怎么在集群里刷新,以及那段「新旧混跑」的窗口。但那是一次刷新的瞬时问题;这一章讲的是一个更慢、更阴险的问题——配置漂移:随着时间推移,实例实际跑着的配置,悄悄地和你在 Git 里声明的配置分了家。来源很多:半夜出事,有人 SSH 上去直接改了个值救火,救完忘了同步回仓库;某次刷新只推到了一半的实例;prod 打了个补丁但 staging 没打,于是 staging 再也复现不了 prod 的 bug。漂移的可怕之处在于它是无声的:一切看起来正常,直到某台实例因为一个谁也不记得改过的配置而行为诡异,或者你照着 Git 部署了一份「一样的」环境却跑出完全不同的结果。检测漂移的办法是把「声明的状态」当作唯一真相:让每个实例暴露自己有效配置的指纹(Actuator),定期审计、和 Git 里的期望值对比,任何不一致就是漂移。更进一步是 GitOps:一个控制器持续把运行状态往声明状态上纠,发现漂移就自动回退(Argo CD 的 selfHeal),让漂移根本无法长期存在;而不可变基础设施则从源头上禁止运行时修改。本章讲清漂移的来源、声明态与运行态的差距、指纹审计的检测、以及 GitOps 与不可变的纠偏。治理台让你调漂移压力和检测方式,看漂移的实例数、发现时延、和由此引发的配置事故怎么变化。",
+      en: "GW3 covered how config refreshes across a fleet and the 'mixed old and new' window. But that is a transient, single-refresh problem; this chapter is about a slower, more insidious one — config drift: over time, the configuration an instance is actually running quietly diverges from what you declared in Git. The sources are many: an incident at 3 a.m. where someone SSHes in and edits a value to fix it, then forgets to sync the change back to the repo; a refresh that only reached half the instances; a patch applied to prod but not to staging, so staging can no longer reproduce prod's bug. What makes drift dangerous is that it is silent: everything looks fine until one instance behaves strangely because of a setting nobody remembers changing, or you deploy an 'identical' environment from Git and get completely different behaviour. The way to detect drift is to treat the declared state as the single source of truth: have each instance expose a fingerprint of its effective config (Actuator), audit periodically, and compare against the expected value in Git — any mismatch is drift. Further still is GitOps: a controller continuously reconciles running state toward declared state and auto-reverts drift the moment it appears (Argo CD's selfHeal), so drift cannot persist; immutable infrastructure prevents runtime changes at the source. This chapter covers the sources of drift, the gap between declared and running state, fingerprint-based detection, and reconciliation with GitOps and immutability. The bench lets you tune the drift pressure and the detection method and watch how the number of drifted instances, the time to detect, and the resulting config incidents change.",
+    },
+    objectives: [
+      { zh: "说出配置漂移的三个常见来源", en: "Name three common sources of config drift" },
+      { zh: "区分「声明的状态」与「运行的状态」", en: "Distinguish declared state from running state" },
+      { zh: "用配置指纹与定期审计检测漂移", en: "Detect drift with config fingerprints and periodic audits" },
+      { zh: "用 GitOps 自动纠偏或不可变基础设施防止漂移", en: "Prevent drift with GitOps auto-reconciliation or immutable infrastructure" },
+    ],
+    outline: [
+      { zh: "配置会漂移:手改、漏刷、环境分家", en: "Config drifts: hand-edits, missed refreshes, environment divergence" },
+      { zh: "声明态 vs 运行态:那道无声的缝", en: "Declared vs running state: the silent gap" },
+      { zh: "检测:配置指纹与定期审计", en: "Detection: config fingerprints and periodic audits" },
+      { zh: "纠偏:GitOps 自动回退 · 不可变基础设施", en: "Reconciliation: GitOps auto-revert · immutable infrastructure" },
+    ],
+  },
 
   /* ============ M5 · TX 消息、事务与一致性 ============ */
   {

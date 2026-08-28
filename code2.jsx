@@ -1001,3 +1001,64 @@ processors:
     },
   ],
 };
+
+/* ============ GW6 · sc31 — config drift detection ============ */
+CODE.sc31 = {
+  note: {
+    zh: "三段代码,一条主线:把声明的状态当唯一真相,再让运行态跟上它。第一段让每个实例暴露自己有效配置的指纹(一个自定义 Actuator 端点),整个集群本该报同一个哈希——不一样就是漂移。第二段是 GitOps:Argo CD 以 Git 为准,selfHeal 会把任何手改自动回退、prune 会删掉 Git 里没有的东西,漂移根本无法长期存在。第三段是没有 GitOps 时的兜底:一段定期审计脚本,把每台实例的指纹和 Git 的期望值对比,不一致就报警。",
+    en: "Three listings, one thread: treat the declared state as the single source of truth and make running state follow it. The first has each instance expose a fingerprint of its effective config (a custom Actuator endpoint) — the whole fleet should report the same hash, and any difference is drift. The second is GitOps: Argo CD holds Git as truth, selfHeal auto-reverts any hand-edit and prune deletes anything not in Git, so drift cannot persist. The third is the fallback without GitOps: a periodic audit script comparing each instance's fingerprint against Git's expected value and alerting on a mismatch.",
+  },
+  tabs: [
+    {
+      lang: "fingerprint (Java)", k: "java", file: "ConfigHashEndpoint.java",
+      src: `// expose a fingerprint of the EFFECTIVE config so a monitor can compare it
+// across the fleet and against the value declared in Git.
+@Component
+@Endpoint(id = "confighash")                   // -> GET /actuator/confighash
+public class ConfigHashEndpoint {
+    private final Environment env;
+    ConfigHashEndpoint(Environment env){ this.env = env; }
+
+    @ReadOperation
+    public Map<String,String> hash() {
+        String effective = Stream.of("feature.checkout", "ratelimit.rps",
+                                     "security.mtls.enabled")   // the keys that matter
+            .map(k -> k + "=" + env.getProperty(k))
+            .collect(Collectors.joining("\\n"));
+        String sha = DigestUtils.sha256Hex(effective).substring(0, 6);
+        return Map.of("hash", sha);            // every instance should report the SAME hash
+    }
+}`,
+    },
+    {
+      lang: "gitops (Argo CD)", k: "yaml", file: "application.yaml",
+      src: `# GitOps: Git is the source of truth; Argo CD reconciles the cluster to it
+# and REVERTS manual drift automatically.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: { name: shop }
+spec:
+  source:
+    repoURL: https://git.shop.com/config.git    # the declared state lives here
+    path: prod
+    targetRevision: main
+  destination: { server: https://kubernetes.default.svc, namespace: shop }
+  syncPolicy:
+    automated:
+      selfHeal: true      # a hand-edit to the live config is reverted to Git
+      prune: true         # anything not in Git is removed`,
+    },
+    {
+      lang: "audit.sh", k: "sh", file: "drift-audit.sh",
+      run: "sh drift-audit.sh   # no output = fleet matches Git; any line = drift",
+      src: `# periodic drift audit — compare every instance's config hash to the expected one
+EXPECTED=$(curl -s config-server/prod/order-service | sha256sum | cut -c1-6)
+for pod in $(kubectl get pods -l app=order -o name); do
+  ACTUAL=$(kubectl exec "$pod" -- curl -s localhost:8081/actuator/confighash | jq -r .hash)
+  if [ "$ACTUAL" != "$EXPECTED" ]; then
+    echo "DRIFT: $pod  running=$ACTUAL  expected=$EXPECTED"   # page on-call
+  fi
+done`,
+    },
+  ],
+};

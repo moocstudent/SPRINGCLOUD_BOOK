@@ -284,3 +284,32 @@ FIGN["sc29-dlimit"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc31 · config drift detection ---------------- */
+FIGN["sc31-drift"] = function ({ idx }) {
+  const L = useL();
+  const fleet = [
+    { tag: "abc123 ✓", tone: "ok" },
+    { tag: "abc123 ✓", tone: "ok" },
+    { tag: "def456 ≠", tone: "warn" },
+    { tag: "abc123 ✓", tone: "ok" },
+  ];
+  return (
+    <FigFrame idx={idx} h={212} cap={L("把 Git 里声明的配置当作唯一真相。对帐器持续把每个实例有效配置的指纹和 Git 的期望值对比:一致是 ✓,不一致(有人手改、漏刷)就是漂移 ≠。审计只是把漂移报出来等人修;GitOps 更进一步,发现漂移就自动回退到声明态(selfHeal)。", "Treat the config declared in Git as the single source of truth. A reconciler continuously compares each instance's effective-config fingerprint against Git's expected value: a match is ✓, a mismatch (a hand-edit, a missed refresh) is drift ≠. An audit merely reports drift and waits for a fix; GitOps goes further and auto-reverts to the declared state (selfHeal).")}>
+      <FBox x={24} y={74} w={130} h={54} label={L("Git 仓库", "Git repo")} sub={L("声明 abc123", "declared abc123")} tone="p" />
+      <FArrow x1={154} y1={101} x2={232} y2={101} c="var(--muted)" />
+      <FT x={193} y={90} cls="tn">{L("期望指纹", "expected hash")}</FT>
+      <FBox x={234} y={78} w={120} h={48} label={L("对帐器", "reconciler")} sub={L("持续对比指纹", "compare fingerprints")} tone="a" />
+      {fleet.map((f, i) => {
+        const y = 32 + i * 40;
+        return (
+          <g key={i}>
+            <FArrow x1={354} y1={101} x2={432} y2={y + 15} c={f.tone === "warn" ? "#c0453f" : "var(--muted)"} dash={f.tone === "warn"} />
+            <FBox x={434} y={y} w={160} h={30} label={`svc  ${f.tag}`} tone={f.tone} />
+          </g>
+        );
+      })}
+      <FT x={512} y={196} cls="tk">{L("发现漂移 → 自动回退(selfHeal)", "drift found → auto-revert (selfHeal)")}</FT>
+    </FigFrame>
+  );
+};

@@ -650,6 +650,63 @@ function DlimitViz() {
   );
 }
 
+/* =========================================================
+   sc31 · driftLab — config drift detection & reconciliation
+   ========================================================= */
+function DriftViz() {
+  const L = useL();
+  const [n, setN] = React.useState(16);
+  const [pressure, setPressure] = React.useState(0.3);   // daily undeclared-change rate
+  const [mode, setMode] = React.useState("none");
+  const [interval, setIntv] = React.useState(24);        // audit interval (hours)
+
+  let driftedFrac, mttdHours, autoHeal;
+  if (mode === "none") { driftedFrac = clamp(pressure * 2.2, 0, 0.9); mttdHours = Infinity; autoHeal = false; }
+  else if (mode === "audit") { driftedFrac = clamp(pressure * (interval / 24) * 0.9 + pressure * 0.12, 0, 0.9); mttdHours = interval / 2; autoHeal = false; }
+  else { driftedFrac = clamp(pressure * 0.06, 0, 0.15); mttdHours = 2 / 60; autoHeal = true; }
+  const drifted = Math.round(n * driftedFrac);
+  const incidents = Math.round(drifted * (mode === "none" ? 1.5 : mode === "audit" ? 0.6 : 0.1));
+  const mttdText = mode === "none" ? L("永不发现", "never") : mode === "audit" ? `~${nf(mttdHours, 0)}h` : "~2 min";
+
+  const items = Array.from({ length: n }, (_, i) => (i < drifted
+    ? { label: "≠", state: "warn", title: "drifted" }
+    : { label: "✓", state: "ok", title: "in sync" }));
+
+  return (
+    <div>
+      <VizHead idx="GW6" title={L("配置漂移:运行的配置怎么和声明的分了家", "Config drift: how running config diverges from what you declared")} />
+      <div className="viz-ctrl">
+        <Slider label={L("实例数", "Instances")} min={4} max={40} value={n} onChange={setN} />
+        <Slider label={L("漂移压力(手改频率)", "Drift pressure (hand-edits)")} min={0} max={1} step={0.05} value={pressure} onChange={setPressure} fmt={pct} />
+        <Slider label={L("审计间隔", "Audit interval")} min={1} max={72} value={interval} onChange={setIntv} unit="h" />
+        <label><span>{L("检测方式", "Detection")}</span><Seg value={mode} onChange={setMode} options={[{ v: "none", l: L("无检测", "none") }, { v: "audit", l: L("定期审计", "audit") }, { v: "gitops", l: L("GitOps 纠偏", "GitOps") }]} /></label>
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("漂移的实例", "Drifted instances")} value={`${drifted}/${n}`} tone={drifted === 0 ? "ok" : drifted > n * 0.3 ? "warn" : "acc"} />
+        <Kpi label={L("发现时延", "Time to detect")} value={mttdText} tone={mode === "none" ? "warn" : mode === "gitops" ? "ok" : "acc"} />
+        <Kpi label={L("自动纠偏", "Auto-heal")} value={autoHeal ? L("是", "yes") : L("否", "no")} tone={autoHeal ? "ok" : "warn"} hint={autoHeal ? L("自动回退到声明态", "auto-reverts to declared") : L("要人工修", "manual fix")} />
+        <Kpi label={L("配置事故/月", "Config incidents/mo")} value={incidents} tone={incidents > 4 ? "warn" : incidents > 0 ? "acc" : "ok"} />
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <div className="sc-cap">{L("集群指纹对比:✓ = 与 Git 声明一致 · ≠ = 已漂移", "fleet fingerprint check: ✓ = matches Git · ≠ = drifted")}</div>
+        <Boxes items={items} />
+      </div>
+
+      <Note mark="→" tone={mode === "none" && drifted > 0 ? "bad" : "on"}>
+        {mode === "none"
+          ? L(`没有检测:半夜救火的手改、只推了一半的刷新、只给 prod 打的补丁,一点点累积——${drifted} 台实例已经跑着谁也说不清的配置,而你根本不知道。它是无声的,直到某台行为诡异、或你照 Git 部署的「同款」环境跑出完全不同的结果。第一步永远是:让漂移可见。`,
+              `No detection: 3 a.m. hand-edits, half-delivered refreshes, patches applied only to prod — it all accumulates until ${drifted} instances run configuration nobody can account for, and you have no idea. It is silent, until one behaves strangely or an 'identical' environment you deployed from Git behaves completely differently. The first step is always: make drift visible.`)
+          : mode === "audit"
+          ? L(`定期审计:每台实例暴露自己有效配置的指纹,每 ${interval} 小时和 Git 里的期望值对比一次,任何不一致就报出来。你现在能发现漂移了(平均 ${nf(mttdHours, 0)} 小时内)——但发现之后还得有人手动修,所以总有一批在途的漂移。比瞎子强得多,但间隔越长,漂移潜伏越久。`,
+              `Periodic audit: each instance exposes a fingerprint of its effective config, compared against Git's expected value every ${interval}h, and any mismatch is reported. You can now find drift (within ~${nf(mttdHours, 0)}h on average) — but after finding it someone must fix it by hand, so there is always a batch in flight. Far better than blind, but the longer the interval, the longer drift hides.`)
+          : L("GitOps:一个控制器持续把运行状态往 Git 声明的状态上纠,发现漂移就自动回退(selfHeal)。漂移在几分钟内就被抹平,根本无法长期存在——运行态和声明态被强行绑定。想更彻底就上不可变基础设施:配置烤进镜像、禁止运行时修改,漂移从源头上无法发生。代价是灵活性:再没有「SSH 上去快速改一下」这条路。", "GitOps: a controller continuously reconciles running state toward the state declared in Git and auto-reverts drift (selfHeal). Drift is erased within minutes and cannot persist — running and declared state are forcibly bound. For the strongest guarantee, use immutable infrastructure: bake config into the image and forbid runtime changes, so drift cannot occur at all. The cost is flexibility: there is no more 'just SSH in and tweak it'.")}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -661,4 +718,5 @@ window.__SC_VIZ_2 = {
   rpcLab: RpcViz,
   versionLab: VersionViz,
   dlimitLab: DlimitViz,
+  driftLab: DriftViz,
 };
