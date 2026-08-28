@@ -280,6 +280,27 @@ const CHAPTERS = [
       { zh: "舱壁隔离:别让一个下游淹了所有线程", en: "Bulkheads: do not let one downstream drown every thread" },
     ],
   },
+  {
+    id: "sc26", code: "CM4", moduleId: "m3", difficulty: 2, hours: 5, prereq: ["sc7"], viz: "rpcLab",
+    props: ["Protobuf vs JSON", "HTTP/2 多路复用", "强类型契约", "四种流式", "对内 vs 对外"],
+    title: { zh: "gRPC 还是 REST:服务之间用什么说话", en: "gRPC or REST: How Services Talk to Each Other" },
+    summary: {
+      zh: "CM1 里你用 OpenFeign 调服务,那本质是基于 HTTP、用 JSON 传输的 REST——微服务的默认选择,而且理由很充分:它通用、人可读、浏览器和 curl 都能用、还能走 HTTP 缓存。但它不是唯一选择,而且对于服务之间频繁的内部调用,它也不总是最优的。gRPC 是主要的替代方案:它用 Protobuf(一种由 .proto 模式定义的紧凑二进制格式)序列化消息、跑在 HTTP/2 上(多路复用、没有队头阻塞、长连接复用)、从模式生成强类型的客户端和服务端桩、并原生支持四种流式(一元、客户端流、服务端流、双向流)。结果是更小的报文、更低的延迟、更强的契约——代价是 curl 读不了的二进制、浏览器要额外的 grpc-web 代理、以及失去 HTTP 缓存。一条经验法则是「对内 vs 对外」:服务之间用 gRPC,系统边缘对外用 REST。本章把两者逐条摆开,治理台按你的消息字段数、调用频率和网络往返,现算出 JSON 与 Protobuf 的报文大小、带宽差异,并根据你的要求(是否要浏览器、要流式、对外还是对内)给出推荐。",
+      en: "In CM1 you called services with OpenFeign, which is essentially REST over HTTP with JSON bodies — the microservice default, and for good reason: it is universal, human-readable, works from a browser or curl, and caches over HTTP. But it is not the only option, and for chatty internal service-to-service traffic it is not always the best. gRPC is the main alternative: it serializes messages with Protobuf (a compact binary format defined by a .proto schema), rides HTTP/2 (multiplexed, no head-of-line blocking, persistent connections), generates typed client and server stubs from the schema, and natively supports four kinds of streaming (unary, client-, server-, and bidirectional). The result is smaller payloads, lower latency and stronger contracts — at the cost of binary you cannot read with curl, an extra grpc-web proxy for browsers, and losing HTTP caching. A rule of thumb is internal-vs-external: gRPC between your services, REST at the edge. This chapter lays the two out side by side, and the bench computes the JSON-vs-Protobuf payload and bandwidth for your message and recommends a side from your requirements (browser clients, streaming, public vs internal).",
+    },
+    objectives: [
+      { zh: "解释 gRPC(Protobuf+HTTP/2)与 REST(JSON+HTTP)在报文、传输、契约上的区别", en: "Explain how gRPC (Protobuf+HTTP/2) and REST (JSON+HTTP) differ in payload, transport and contract" },
+      { zh: "估算同一条消息在 JSON 与 Protobuf 下的字节数差异", en: "Estimate the byte-size difference of one message in JSON versus Protobuf" },
+      { zh: "说清 gRPC 的四种流式与 REST 的请求-响应模型", en: "State gRPC's four streaming modes versus REST's request-response model" },
+      { zh: "按对内/对外、浏览器、流式、吞吐选出 gRPC 或 REST", en: "Choose gRPC or REST from internal/external, browser, streaming and throughput needs" },
+    ],
+    outline: [
+      { zh: "两种报文:JSON 文本 vs Protobuf 二进制", en: "Two payloads: JSON text vs Protobuf binary" },
+      { zh: "两种传输:HTTP/1.1 vs HTTP/2 多路复用", en: "Two transports: HTTP/1.1 vs HTTP/2 multiplexing" },
+      { zh: "契约与流式:.proto 代码生成、双向流", en: "Contract and streaming: .proto codegen, bidirectional streams" },
+      { zh: "对内选 gRPC,对外选 REST,以及为什么", en: "gRPC inside, REST at the edge — and why" },
+    ],
+  },
 
   /* ============ M4 · GW 网关与配置中心 ============ */
   {

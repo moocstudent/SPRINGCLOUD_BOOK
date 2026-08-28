@@ -390,6 +390,110 @@ function ConfigViz() {
   );
 }
 
+/* =========================================================
+   sc26 · rpcLab — gRPC vs REST chooser
+   ========================================================= */
+function RpcViz() {
+  const L = useL();
+  const [fields, setFields] = React.useState(12);   // fields in the message
+  const [rate, setRate] = React.useState(5000);     // calls/s
+  const [rtt, setRtt] = React.useState(3);          // network RTT ms
+  const [browser, setBrowser] = React.useState(false);
+  const [streaming, setStreaming] = React.useState(false);
+  const [publicApi, setPublicApi] = React.useState(false);
+
+  // payload models (rough but honest): JSON is text+keys, Protobuf is tag+varint
+  const jsonBytes = Math.round(fields * 22 + 40);
+  const protoBytes = Math.round(fields * 5 + 6);
+  const saved = 1 - protoBytes / jsonBytes;
+  const jsonBW = rate * jsonBytes;                  // bytes/s on the wire
+  const protoBW = rate * protoBytes;
+  // per-call latency: gRPC = HTTP/2 + binary parse; REST = HTTP/1.1 + JSON parse
+  const restLat = rtt + 0.6 + jsonBytes * 0.0022;
+  const grpcLat = rtt + 0.25 + protoBytes * 0.0008;
+
+  // efficiency magnitude (chatty internal load with big messages favours gRPC)
+  const eff = clamp((rate * fields) / (12000 * 20), 0, 1);
+  const deltas = [];
+  let g = 50, r = 50;
+  { const d = Math.round(eff * 24); g += d; r -= Math.round(eff * 10); deltas.push({ k: L("报文/吞吐效率", "payload/throughput"), v: d, side: "g" }); }
+  if (streaming) { g += 22; r -= 14; deltas.push({ k: L("流式", "streaming"), v: 22, side: "g" }); }
+  if (browser) { r += 26; g -= 18; deltas.push({ k: L("浏览器客户端", "browser clients"), v: 26, side: "r" }); }
+  if (publicApi) { r += 16; g -= 10; deltas.push({ k: L("对外/生态", "public/ecosystem"), v: 16, side: "r" }); }
+  g = clamp(g, 3, 100); r = clamp(r, 3, 100);
+  const rec = g > r + 6 ? "grpc" : r > g + 6 ? "rest" : "either";
+  const decider = deltas.sort((a, b) => b.v - a.v)[0];
+
+  const heavy = eff > 0.4;
+  const axes = [
+    { label: L("序列化/报文", "serialization"), g: L("Protobuf 二进制", "Protobuf binary"), r: L("JSON 文本", "JSON text"), win: "g", active: heavy },
+    { label: L("传输", "transport"), g: L("HTTP/2 多路复用", "HTTP/2 multiplexed"), r: L("HTTP/1.1 常用", "HTTP/1.1 typical"), win: "g", active: heavy },
+    { label: L("契约", "contract"), g: L(".proto 强类型代码生成", ".proto typed codegen"), r: L("OpenAPI/手写,松散", "OpenAPI/hand, loose"), win: "g", active: false },
+    { label: L("流式", "streaming"), g: L("四种流原生", "4 streaming modes"), r: L("请求-响应(需 SSE/WS)", "req-resp (SSE/WS)"), win: "g", active: streaming },
+    { label: L("浏览器/客户端", "browser"), g: L("需 grpc-web 代理", "needs grpc-web proxy"), r: L("任何客户端直连", "any client, direct"), win: "r", active: browser },
+    { label: L("可调试/缓存", "debug/cache"), g: L("二进制,需工具", "binary, tooling"), r: L("curl 可读 + HTTP 缓存", "curl-readable + HTTP cache"), win: "r", active: publicApi },
+  ];
+  const Cell = ({ text, winner }) => (
+    <div style={{ flex: 1, padding: "5px 8px", font: "500 10.5px var(--f-mono)", borderRadius: 4,
+      background: winner ? "color-mix(in srgb, #2e9e6b 16%, transparent)" : "transparent",
+      color: winner ? "var(--ink)" : "var(--muted)", border: winner ? "1px solid color-mix(in srgb,#2e9e6b 45%,transparent)" : "1px solid transparent" }}>
+      {winner ? "✓ " : ""}{text}
+    </div>
+  );
+
+  return (
+    <div>
+      <VizHead idx="CM4" title={L("gRPC vs REST:报文、传输,和该在哪一层用哪个", "gRPC vs REST: payload, transport, and which one at which layer")} />
+      <div className="viz-ctrl">
+        <Slider label={L("消息字段数", "Fields in message")} min={3} max={50} value={fields} onChange={setFields} />
+        <Slider label={L("调用频率", "Call rate")} min={100} max={50000} step={100} value={rate} onChange={setRate} fmt={(v) => big(v) + "/s"} />
+        <Slider label={L("网络往返", "Network RTT")} min={1} max={100} value={rtt} onChange={setRtt} unit="ms" />
+        <Toggle label={L("需要浏览器直连", "Need browser clients")} value={browser} onChange={setBrowser} />
+        <Toggle label={L("需要流式", "Need streaming")} value={streaming} onChange={setStreaming} />
+        <Toggle label={L("对外公开 API", "Public-facing API")} value={publicApi} onChange={setPublicApi} />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("REST/JSON 报文", "REST/JSON payload")} value={big(jsonBytes)} unit="B" tone="" />
+        <Kpi label={L("gRPC/Protobuf 报文", "gRPC/Protobuf payload")} value={big(protoBytes)} unit="B" tone="ok" hint={L(`省 ${pct(saved)} 带宽`, `${pct(saved)} smaller`)} />
+        <Kpi label={L("推荐", "Recommendation")} value={rec === "grpc" ? "gRPC" : rec === "rest" ? "REST" : L("两者皆可", "either")} tone="acc" />
+        <Kpi label={L("决定性因素", "Deciding factor")} value={decider ? decider.k : L("需求相近", "close call")} tone="warn" />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("线上带宽(字节/秒):同一批调用,JSON vs Protobuf", "wire bandwidth (bytes/s): same calls, JSON vs Protobuf")}</div>
+        <Bar label={L("REST/JSON", "REST/JSON")} value={jsonBW} max={jsonBW} tone="warn" valText={big(jsonBW) + "/s"} />
+        <Bar label={L("gRPC/Protobuf", "gRPC/Protobuf")} value={protoBW} max={jsonBW} tone="ok" valText={big(protoBW) + "/s"} />
+        <div className="sc-cap" style={{ marginTop: 4 }}>{L(`单次延迟估算:REST ~${nf(restLat, 1)}ms · gRPC ~${nf(grpcLat, 1)}ms`, `per-call latency est: REST ~${nf(restLat, 1)}ms · gRPC ~${nf(grpcLat, 1)}ms`)}</div>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ display: "flex", gap: 6, padding: "0 8px 3px", font: "600 10px var(--f-mono)", color: "var(--muted)" }}>
+          <div style={{ width: 92 }} /><div style={{ flex: 1 }}>gRPC</div><div style={{ flex: 1 }}>REST</div>
+        </div>
+        {axes.map((a, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3,
+            padding: a.active ? "2px 0 2px 4px" : "2px 0", borderLeft: a.active ? "2px solid var(--accent)" : "2px solid transparent" }}>
+            <div style={{ width: 88, font: `${a.active ? 700 : 500} 10.5px var(--f-mono)`, color: a.active ? "var(--ink)" : "var(--muted)" }}>{a.label}{a.active ? " ●" : ""}</div>
+            <Cell text={a.g} winner={a.active && a.win === "g"} />
+            <Cell text={a.r} winner={a.active && a.win === "r"} />
+          </div>
+        ))}
+      </div>
+
+      <Note mark="→" tone="on">
+        {rec === "grpc"
+          ? L(`按你的场景,gRPC 更合适${decider ? "——决定性因素是「" + decider.k + "」。" : "。"}它的 Protobuf 二进制报文只有 JSON 的约 ${pct(1 - saved)}(省 ${pct(saved)} 带宽),HTTP/2 多路复用又压低了延迟——服务之间高频内部调用正是它的主场。代价:curl 读不了、浏览器要 grpc-web 代理、没有 HTTP 缓存。`,
+              `For your scenario, gRPC fits better${decider ? " — the deciding factor is '" + decider.k + "'. " : ". "}Its Protobuf binary payload is about ${pct(1 - saved)} the size of JSON (${pct(saved)} less bandwidth) and HTTP/2 multiplexing cuts latency — chatty internal service-to-service traffic is its home ground. The price: not curl-readable, a grpc-web proxy for browsers, no HTTP caching.`)
+          : rec === "rest"
+          ? L(`按你的场景,REST 更合适${decider ? "——决定性因素是「" + decider.k + "」。" : "。"}JSON 人可读、任何客户端(包括浏览器)都能直连、能走 HTTP 缓存,系统边缘对外就该用它。报文更大、延迟略高,但在对外/低频场景里这点开销不重要。`,
+              `For your scenario, REST fits better${decider ? " — the deciding factor is '" + decider.k + "'. " : ". "}JSON is human-readable, any client (browsers included) connects directly, and it caches over HTTP — at the edge, facing the outside world, this is what to use. The payload is bigger and latency slightly higher, but at external/low-frequency scale that overhead does not matter.`)
+          : L("两者都够用。经验法则是分层:服务之间(内部、高频、强契约)用 gRPC,系统边缘对外(浏览器、第三方、要缓存)用 REST——很多系统两者都有,由 API 网关在边缘把外部 REST 翻译成内部 gRPC。", "Both work. The rule of thumb is to layer them: gRPC between services (internal, high-frequency, strong contracts), REST at the edge (browsers, third parties, caching) — many systems run both, with the API gateway translating external REST into internal gRPC.")}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -398,4 +502,5 @@ window.__SC_VIZ_2 = {
   gatewayLab: GatewayViz,
   rateLab: RateViz,
   configLab: ConfigViz,
+  rpcLab: RpcViz,
 };

@@ -17,6 +17,7 @@ const KW = {
   sh: "if then else fi for do done while case esac function echo export local return sudo curl docker kubectl mvn java set",
   xml: "",
   properties: "true false",
+  proto: "syntax package message repeated optional required reserved enum service rpc returns stream string int32 int64 uint32 uint64 sint32 bool bytes double float map option",
 };
 const CODE_RE = {
   java: /(\/\*[\s\S]*?\*\/|\/\/[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*)|(@?[A-Za-z_][A-Za-z0-9_]*)/g,
@@ -26,6 +27,7 @@ const CODE_RE = {
   dockerfile: /(#[^\n]*)|("(?:\\.|[^"\\\n])*")|(\b\d[\w.]*)|([A-Za-z_][A-Za-z0-9_]*)/g,
   sh: /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*)|([A-Za-z_][A-Za-z0-9_]*)/g,
   xml: /(<!--[\s\S]*?-->)|("(?:[^"\n]*)")|(\b\d[\w.]*)|(<\/?[A-Za-z_][A-Za-z0-9_.:-]*|[A-Za-z_][A-Za-z0-9_.:-]*)/g,
+  proto: /(\/\/[^\n]*)|("(?:\\.|[^"\\\n])*")|(\b\d[\w.]*)|([A-Za-z_][A-Za-z0-9_]*)/g,
 };
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 // Small, dependency-free highlighter: comments, strings, numbers, keywords.
@@ -743,6 +745,77 @@ curl -X POST localhost:8081/actuator/busrefresh
 # For a few seconds some instances answer with the OLD value and some the NEW.
 # For a flag two services must agree on: roll it out to one instance first,
 # verify, then the rest — and keep both code paths valid during the window.`,
+    },
+  ],
+};
+
+/* ============ CM4 · sc26 — gRPC vs REST ============ */
+CODE.sc26 = {
+  note: {
+    zh: "同一个「取订单 + 订阅订单更新」的能力,三个视角。gRPC 从一份 .proto 契约生成强类型的客户端和服务端桩,一元调用和服务端流都是原生的;REST 用 @RestController 把同样的能力做成 JSON over HTTP,通用、可 curl、可缓存,但流式只能退回 SSE。对内高频调用选上面的 gRPC,系统边缘对外选下面的 REST。",
+    en: "The same capability — fetch an order, subscribe to order updates — from three angles. gRPC generates typed client and server stubs from one .proto contract, with unary and server-streaming native; REST exposes the same capability as JSON over HTTP with a @RestController — universal, curl-able, cacheable — but streaming falls back to SSE. Use the gRPC above for chatty internal calls, the REST below at the edge.",
+  },
+  tabs: [
+    {
+      lang: "order.proto", k: "proto", file: "order.proto",
+      run: "protoc --java_out=. --grpc-java_out=. order.proto   # generates the stubs",
+      src: `syntax = "proto3";
+package shop.order;
+option java_package = "com.shop.order.grpc";
+
+service OrderService {
+  rpc GetOrder    (OrderId) returns (Order);          // unary
+  rpc WatchOrders (OrderId) returns (stream Order);   // server streaming
+}
+
+message OrderId { int64 id = 1; }
+message Order {
+  int64  id     = 1;      // field numbers, not names, go on the wire (compact)
+  string sku    = 2;
+  int32  qty    = 3;
+  string status = 4;
+}
+// One contract, many languages, checked at compile time.`,
+    },
+    {
+      lang: "gRPC (Java)", k: "java", file: "OrderGrpcService.java",
+      src: `// extend the GENERATED base class; grpc-spring-boot-starter wires it up
+@GrpcService
+public class OrderGrpcService extends OrderServiceGrpc.OrderServiceImplBase {
+
+    @Override
+    public void getOrder(OrderId req, StreamObserver<Order> obs) {
+        Order o = repo.find(req.getId());     // typed, generated message
+        obs.onNext(o);                        // Protobuf on the wire (~¼ of JSON)
+        obs.onCompleted();
+    }
+
+    @Override
+    public void watchOrders(OrderId req, StreamObserver<Order> obs) {
+        // server streaming: push updates over ONE HTTP/2 stream, no polling
+        events.subscribe(req.getId(), obs::onNext);
+    }
+}`,
+    },
+    {
+      lang: "REST (Java)", k: "java", file: "OrderController.java",
+      run: "curl localhost:8081/orders/5001    # human-readable, no tooling needed",
+      src: `// the SAME capability as JSON over HTTP — universal, curl-able, cacheable
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    @GetMapping("/{id}")                      // unary: plain request-response
+    public OrderDto getOrder(@PathVariable long id) {
+        return OrderDto.from(repo.find(id));  // serialized to JSON (verbose, readable)
+    }
+
+    // streaming is not native to REST — fall back to Server-Sent Events
+    @GetMapping(value = "/{id}/watch", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<OrderDto> watch(@PathVariable long id) {
+        return events.stream(id).map(OrderDto::from);
+    }
+}`,
     },
   ],
 };

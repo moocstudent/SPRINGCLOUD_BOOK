@@ -190,3 +190,41 @@ FIGN["sc25-mq"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc26 · gRPC vs REST ---------------- */
+FIGN["sc26-grpc"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={224} cap={L("同一条消息:REST 用 JSON 文本(冗长、人可读、任何客户端和 HTTP 缓存都能用),gRPC 用 Protobuf 二进制(紧凑、约 JSON 的四分之一)跑在 HTTP/2 上(多路复用、原生流式、强类型 .proto 契约)。经验法则:服务之间用 gRPC,系统边缘对外用 REST。", "The same message: REST uses JSON text (verbose, human-readable, works with any client and HTTP caching), gRPC uses Protobuf binary (compact, about a quarter of JSON) over HTTP/2 (multiplexed, native streaming, a strong typed .proto contract). Rule of thumb: gRPC between services, REST at the edge.")}>
+      {/* REST side */}
+      <text x={170} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--accent)" }}>REST · JSON + HTTP</text>
+      <FBox x={24} y={44} w={62} h={32} label={L("客户端", "client")} tone="m" />
+      <FArrow x1={86} y1={60} x2={110} y2={60} c="var(--muted)" />
+      <FT x={168} y={40} cls="tn">HTTP/1.1</FT>
+      <rect x={110} y={48} width={200} height={24} rx="3" fill="color-mix(in srgb, var(--accent) 14%, transparent)" stroke="var(--accent)" />
+      <text x={210} y={64} textAnchor="middle" style={{ font: "500 10px var(--f-mono)", fill: "var(--ink)" }}>{"{ \"orderId\": 5001, ... }  ~280B"}</text>
+      <FT x={170} y={92} cls="tk">{L("任何客户端可读 · 可缓存", "any client, readable · cacheable")}</FT>
+
+      <line x1={334} y1={30} x2={334} y2={206} stroke="var(--hairline-strong)" strokeDasharray="4 3" />
+
+      {/* gRPC side */}
+      <text x={508} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--primary)" }}>gRPC · Protobuf + HTTP/2</text>
+      <FBox x={352} y={44} w={62} h={32} label={L("桩", "stub")} tone="m" />
+      <FArrow x1={414} y1={60} x2={438} y2={60} c="var(--muted)" />
+      <FT x={500} y={40} cls="tn">HTTP/2 · {L("多路复用", "multiplexed")}</FT>
+      <rect x={438} y={48} width={52} height={24} rx="3" fill="color-mix(in srgb, var(--primary) 20%, transparent)" stroke="var(--primary)" />
+      <text x={464} y={64} textAnchor="middle" style={{ font: "500 9px var(--f-mono)", fill: "var(--ink)" }}>~66B</text>
+      <FT x={545} y={64} anchor="start" cls="tk">{L("← 约 JSON 的 1/4", "← ~¼ of JSON")}</FT>
+      <FT x={508} y={92} cls="tk">{L(".proto 强类型 · 四种流式", ".proto typed · streaming")}</FT>
+
+      {/* size bars for direct comparison */}
+      <FT x={40} y={128} anchor="start" cls="tm">{L("线上报文大小对比 / payload on the wire", "payload size on the wire")}</FT>
+      <FT x={40} y={150} anchor="start" cls="tn">JSON</FT>
+      <rect x={110} y={140} width={230} height={14} rx="3" fill="color-mix(in srgb, var(--accent) 60%, transparent)" stroke="var(--accent)" />
+      <text x={346} y={151} className="tn">~280B</text>
+      <FT x={40} y={172} anchor="start" cls="tn">Protobuf</FT>
+      <rect x={110} y={162} width={54} height={14} rx="3" fill="color-mix(in srgb, var(--primary) 70%, transparent)" stroke="var(--primary)" />
+      <text x={170} y={173} className="tn">~66B</text>
+    </FigFrame>
+  );
+};
