@@ -875,3 +875,72 @@ Link: <https://api.shop.com/v2/orders>; rel="successor-version"
     },
   ],
 };
+
+/* ============ GW5 · sc29 — distributed rate limiting ============ */
+CODE.sc29 = {
+  note: {
+    zh: "Spring Cloud Gateway 的 RequestRateLimiter 天生就是分布式的:replenishRate/burstCapacity 是全局值,计数器住在 Redis 里、被所有网关副本共享,所以十个副本仍然只放一份额度,而不是十份。第二段是它内部那类 Lua 脚本——Redis 原子地执行「检查+扣减」,否则两个网关同时看到还剩一个令牌就都放行了。第三段对比三种算法的取舍,并给出给 Redis 减负的「本地预检 + 全局精算」思路。",
+    en: "Spring Cloud Gateway's RequestRateLimiter is distributed by design: replenishRate/burstCapacity are global values, the counter lives in Redis shared by every gateway replica, so ten replicas still enforce one quota, not ten. The second listing is the kind of Lua script it uses internally — Redis runs check-and-decrement atomically, or two gateways both see one token left and both admit. The third compares the three algorithms' trade-offs and gives the local-precheck + global-reconcile idea for easing Redis.",
+  },
+  tabs: [
+    {
+      lang: "gateway.yml", k: "yaml", file: "gateway/application.yml",
+      src: `spring:
+  cloud:
+    gateway:
+      routes:
+        - id: orders
+          uri: lb://order-service
+          predicates: [ "Path=/api/orders/**" ]
+          filters:
+            - name: RequestRateLimiter
+              args:
+                # GLOBAL values — the counter lives in Redis, shared by EVERY
+                # gateway replica, so N replicas enforce one limit (not N x).
+                redis-rate-limiter.replenishRate: 1000     # tokens/sec, fleet-wide
+                redis-rate-limiter.burstCapacity: 2000     # global burst
+                key-resolver: "#{@userKeyResolver}"
+  data:
+    redis: { host: redis, port: 6379 }   # the shared store; one per environment`,
+    },
+    {
+      lang: "token-bucket.lua", k: "sh", file: "request_rate_limiter.lua",
+      run: "# Redis runs this ATOMICALLY — no check-then-set race between gateways",
+      src: `local tokens_key = KEYS[1]
+local ts_key     = KEYS[2]
+local rate       = tonumber(ARGV[1])   -- replenishRate
+local capacity   = tonumber(ARGV[2])   -- burstCapacity
+local now        = tonumber(ARGV[3])
+local requested  = tonumber(ARGV[4])
+
+local last    = tonumber(redis.call("get", tokens_key)) or capacity
+local last_ts = tonumber(redis.call("get", ts_key))     or 0
+local filled  = math.min(capacity, last + (now - last_ts) * rate)   -- refill by elapsed time
+local allowed = filled >= requested
+local new     = allowed and (filled - requested) or filled
+redis.call("setex", tokens_key, 2, new)     -- decrement + TTL, in one atomic run
+redis.call("setex", ts_key, 2, now)
+return { allowed and 1 or 0, new }`,
+    },
+    {
+      lang: "algorithms", k: "properties", file: "algorithms.txt",
+      src: `# Three ways to count, three trade-offs
+#
+# FIXED WINDOW           count per 1s bucket, reset on the boundary
+#   + cheapest (one INCR + EXPIRE)
+#   - BOUNDARY BURST: 1000 at 0.999s + 1000 at 1.001s = 2000 in ~2ms
+#
+# SLIDING WINDOW LOG     store every request timestamp, count the last 1s
+#   + exact          - memory heavy (one entry per request)
+#
+# SLIDING WINDOW COUNTER weight this window + previous by overlap
+#   + smooths the boundary burst, cheap    - approximate (fine for almost everyone)
+#
+# TOKEN BUCKET           refill at a rate, allow a controlled burst
+#   + smooth + burst-friendly (Spring Cloud Gateway's default, see tab 1)
+#
+# EASING REDIS: local pre-check + global reconcile — each gateway keeps a small
+# local allowance and only syncs with Redis periodically, cutting round-trips.`,
+    },
+  ],
+};

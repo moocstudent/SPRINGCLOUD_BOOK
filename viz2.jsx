@@ -573,6 +573,83 @@ function VersionViz() {
   );
 }
 
+/* =========================================================
+   sc29 · dlimitLab — distributed rate limiting across a fleet
+   ========================================================= */
+function DlimitViz() {
+  const L = useL();
+  const [n, setN] = React.useState(10);
+  const [limit, setLimit] = React.useState(1000);   // desired GLOBAL rps
+  const [incoming, setIncoming] = React.useState(5000);
+  const [skew, setSkew] = React.useState(0.3);       // LB imbalance 0..1
+  const [mode, setMode] = React.useState("localfull");
+
+  const perInstance = limit / n;
+  const redisRTT = 0.5;
+  let cap, addedLat, redisOps;
+  if (mode === "localfull") { cap = n * limit; addedLat = 0; redisOps = 0; }
+  else if (mode === "localdiv") { cap = limit * (1 - skew * 0.6); addedLat = 0; redisOps = 0; }
+  else { cap = limit; addedLat = redisRTT; redisOps = incoming; }
+  const admitted = Math.min(incoming, cap);
+  const ratio = admitted / limit;                    // 1 = exact
+  const over = ratio > 1.05, under = ratio < 0.95;
+  const relText = over ? `+${pct(ratio - 1)}` : under ? `-${pct(1 - ratio)}` : L("精确", "exact");
+
+  return (
+    <div>
+      <VizHead idx="GW5" title={L("分布式限流:十个网关怎么共享一个额度", "Distributed rate limiting: how ten gateways share one quota")} />
+      <div className="viz-ctrl">
+        <Slider label={L("网关副本数 N", "Gateway replicas N")} min={2} max={30} value={n} onChange={setN} />
+        <Slider label={L("目标全局额度", "Desired global limit")} min={500} max={20000} step={500} value={limit} onChange={setLimit} fmt={(v) => big(v) + "/s"} />
+        <Slider label={L("进入流量", "Incoming")} min={500} max={30000} step={500} value={incoming} onChange={setIncoming} fmt={(v) => big(v) + "/s"} />
+        <Slider label={L("负载不均(倾斜)", "Load skew")} min={0} max={1} step={0.05} value={skew} onChange={setSkew} fmt={pct} />
+        <label><span>{L("限流方式", "Limiter")}</span><Seg value={mode} onChange={setMode} options={[{ v: "localfull", l: L("本地·各设全局值", "local · each=global") }, { v: "localdiv", l: L("本地·各设 1/N", "local · each 1/N") }, { v: "shared", l: L("共享 Redis", "shared Redis") }]} /></label>
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("实际放行", "Actually admitted")} value={big(admitted)} unit="/s" tone={over || under ? "warn" : "ok"} />
+        <Kpi label={L("相对目标额度", "vs desired limit")} value={relText} tone={over ? "warn" : under ? "warn" : "ok"} hint={over ? L("限流形同虚设", "limit is a fiction") : under ? L("误伤合法流量", "throttles legit traffic") : L("正好达标", "on target")} />
+        <Kpi label={L("每请求延迟税", "Latency tax/req")} value={addedLat ? "+" + nf(addedLat, 1) : "0"} unit="ms" tone={addedLat ? "acc" : "ok"} />
+        <Kpi label={L("Redis 压力", "Redis load")} value={redisOps ? big(redisOps) : "0"} unit={redisOps ? " ops/s" : ""} tone={redisOps > 10000 ? "warn" : redisOps ? "acc" : "ok"} hint={redisOps ? L("每请求一次往返", "one RTT per request") : ""} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <Bar label={L("目标全局额度", "desired global limit")} value={limit} max={Math.max(admitted, limit)} tone="mut" valText={big(limit) + "/s"} />
+        <Bar label={L("实际放行", "actually admitted")} value={admitted} max={Math.max(admitted, limit)} tone={over || under ? "warn" : "ok"} valText={big(admitted) + "/s"} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        {mode === "shared" ? (
+          <div>
+            <div className="sc-cap">{L("每个网关都对 Redis 上同一个计数器检查并扣减 → 全局精确", "every gateway checks-and-decrements one counter in Redis → globally exact")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+              <Boxes items={Array.from({ length: Math.min(n, 8) }, () => ({ label: "GW", state: "ok" }))} />
+              <span style={{ color: "var(--muted)" }}>→</span>
+              <div style={{ font: "600 11px var(--f-mono)", padding: "8px 12px", borderRadius: 6, color: "#fff", background: "color-mix(in srgb, var(--accent) 82%, transparent)", border: "1px solid var(--accent)" }}>Redis · {big(limit)}/s</div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="sc-cap">{L(`每个网关一个本地桶 ${mode === "localfull" ? big(limit) : big(perInstance)}/s;它们不会自动相加成一个全局桶`, `each gateway has its own local bucket of ${mode === "localfull" ? big(limit) : big(perInstance)}/s; they do not add up into one global bucket`)}</div>
+            <Boxes items={Array.from({ length: Math.min(n, 12) }, () => ({ label: (mode === "localfull" ? big(limit) : big(perInstance)) + "/s", state: mode === "localfull" ? "warn" : "ok" }))} />
+          </div>
+        )}
+      </div>
+
+      <Note mark="→" tone={over || under ? "bad" : "on"}>
+        {mode === "localfull"
+          ? L(`经典错误:在每个网关上都配全局值 ${big(limit)}/s,以为这就是全局限流。结果 ${n} 个网关各放 ${big(limit)},全局上限变成 ${big(cap)}/s——是你想要的 ${nf(n, 0)} 倍,限流形同虚设。本地的桶不会相加成一个全局的桶。`,
+              `The classic mistake: configure the global value ${big(limit)}/s on each gateway, thinking that is the global limit. With ${n} gateways each admitting ${big(limit)}, the global cap becomes ${big(cap)}/s — ${nf(n, 0)}× what you wanted, and the limit is a fiction. Local buckets do not add up into one global bucket.`)
+          : mode === "localdiv"
+          ? L(`把额度平分成每台 ${big(perInstance)}/s 看起来对,但负载不均会坑你:热的网关先把自己那份用光、开始拒绝,而全局其实只放了 ${big(admitted)}/s、远没到 ${big(limit)} 的上限——你误伤了合法流量。倾斜越大,浪费越多。`,
+              `Splitting the quota into ${big(perInstance)}/s each looks right, but uneven load bites: a hot gateway exhausts its share and rejects while the global rate is only ${big(admitted)}/s, well under the ${big(limit)} limit — you throttle legitimate traffic. The more skew, the more waste.`)
+          : L(`共享 Redis:每个请求都对 Redis 上同一个计数器做原子的「检查并扣减」,于是无论 ${n} 个网关怎么分流,全局额度都精确是 ${big(limit)}/s。代价是每请求多一次 Redis 往返(+${nf(addedLat, 1)}ms),而且 Redis 要扛 ${big(redisOps)}/s、成了热点和单点——生产上常配「本地预检 + 全局精算」的混合方案给它减负。别忘了检查+扣减必须原子(Lua 脚本),否则两个网关同时看到还剩一个令牌就都放行了。`,
+              `Shared Redis: every request does an atomic check-and-decrement against one counter in Redis, so however the ${n} gateways split traffic, the global quota is exactly ${big(limit)}/s. The cost is an extra Redis round-trip per request (+${nf(addedLat, 1)}ms), and Redis must handle ${big(redisOps)}/s — a hotspot and single point, which production often eases with a local-precheck + global-reconcile hybrid. And remember check-and-decrement must be atomic (a Lua script), or two gateways both see one token left and both admit.`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -583,4 +660,5 @@ window.__SC_VIZ_2 = {
   configLab: ConfigViz,
   rpcLab: RpcViz,
   versionLab: VersionViz,
+  dlimitLab: DlimitViz,
 };

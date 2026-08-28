@@ -252,3 +252,35 @@ FIGN["sc28-version"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc29 · distributed rate limiting ---------------- */
+FIGN["sc29-dlimit"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={214} cap={L("目标是全局每秒 1000 次。左:每个网关一个本地桶,各设 1000——十个网关加起来放进一万,超十倍。本地的桶不会相加成一个全局桶。右:所有网关对 Redis 上同一个计数器原子地检查并扣减,于是无论多少网关,全局额度都精确是 1000/s——代价是每请求一次 Redis 往返。", "The target is 1000 requests per second globally. Left: each gateway has its own local bucket set to 1000 — ten gateways admit ten thousand, ten times over. Local buckets do not add up into one global bucket. Right: all gateways atomically check-and-decrement one counter in Redis, so however many gateways there are the global quota is exactly 1000/s — at the cost of a Redis round-trip per request.")}>
+      {/* left: local buckets */}
+      <text x={168} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "#d98a1f" }}>{L("本地桶 · N× 超额", "local buckets · N× over")}</text>
+      {[0, 1, 2].map((i) => (
+        <g key={i}>
+          <FBox x={28} y={40 + i * 42} w={116} h={32} label={L("网关", "gateway")} sub="1000/s" tone="warn" />
+          <FArrow x1={144} y1={56 + i * 42} x2={236} y2={98} c="var(--muted)" />
+        </g>
+      ))}
+      <FBox x={238} y={78} w={80} h={40} label="10000/s" sub={L("✗ 10 倍", "✗ 10×")} tone="bad" />
+      <FT x={168} y={182} cls="tk">{L("各放各的,不相加", "each admits alone, no sum")}</FT>
+
+      <line x1={334} y1={28} x2={334} y2={196} stroke="var(--hairline-strong)" strokeDasharray="4 3" />
+
+      {/* right: shared Redis */}
+      <text x={508} y={20} textAnchor="middle" style={{ font: "700 12px var(--f-mono)", fill: "var(--primary)" }}>{L("共享 Redis · 精确", "shared Redis · exact")}</text>
+      {[0, 1, 2].map((i) => (
+        <g key={i}>
+          <FBox x={360} y={40 + i * 42} w={104} h={32} label={L("网关", "gateway")} tone="p" />
+          <FArrow x1={464} y1={56 + i * 42} x2={532} y2={98} c="var(--muted)" />
+        </g>
+      ))}
+      <FBox x={534} y={78} w={96} h={40} label="Redis" sub={L("1000/s ✓", "1000/s ✓")} tone="ok" />
+      <FT x={508} y={182} cls="tk">{L("同一个计数器,原子扣减", "one counter, atomic decrement")}</FT>
+    </FigFrame>
+  );
+};

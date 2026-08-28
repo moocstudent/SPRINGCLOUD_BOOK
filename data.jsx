@@ -387,6 +387,27 @@ const CHAPTERS = [
       { zh: "并行运行与退场:弃用、日落、迁移", en: "Running in parallel and sunsetting: deprecate, sunset, migrate" },
     ],
   },
+  {
+    id: "sc29", code: "GW5", moduleId: "m4", difficulty: 3, hours: 6, prereq: ["sc11"], viz: "dlimitLab",
+    props: ["全局限流", "共享计数器 Redis", "固定/滑动窗口", "令牌桶 + Lua 原子性", "本地+全局混合"],
+    title: { zh: "分布式限流:让一群网关共享一个额度", en: "Distributed Rate Limiting: One Quota Shared Across a Fleet" },
+    summary: {
+      zh: "GW2 里你在一个网关上用令牌桶做了限流。但生产里网关不止一个——为了高可用和吞吐,你会跑十个、二十个网关副本。于是一个尖锐的问题冒出来:这十个网关,怎么共享同一个「每秒一千次」的额度?最常见的错误是:在每个网关上都配 replenishRate: 1000,以为这就是全局限流——结果十个网关各放一千,全局放进去一万,限流形同虚设。这是分布式限流的核心难题:本地的桶不会自动相加成一个全局的桶。反过来,如果你把额度平均分成每台 1/N,又会被负载不均坑到:某台热的网关先把自己那份用光、开始拒绝,而全局其实还远没到上限,于是你误伤了合法流量。正解是把计数搬到一个共享存储(通常是 Redis):每个请求都去 Redis 上对同一个计数器做「检查并扣减」,于是无论多少个网关,全局额度都是准的。Spring Cloud Gateway 的 RequestRateLimiter 正是这么做的——它用 Redis 加一段 Lua 脚本保证「检查+扣减」是原子的(否则两个网关同时看到还剩一个令牌、都放行,就超额了)。代价也随之而来:每个请求多一次 Redis 往返,Redis 成了热点和单点。本章讲清 N 倍问题、共享计数器与原子性、固定窗口/滑动窗口/令牌桶三种算法的取舍,以及用「本地预检 + 全局精算」的混合方案给 Redis 减负。治理台让你在本地桶和共享 Redis 之间切换,看全局额度怎么从「超十倍」或「被倾斜误伤」变成精确。",
+      en: "In GW2 you rate-limited at a single gateway with a token bucket. But in production the gateway is not one process — for availability and throughput you run ten or twenty gateway replicas. That raises a sharp question: how do these ten gateways share one quota of 'a thousand requests per second'? The most common mistake is to configure replenishRate: 1000 on each gateway, thinking that is the global limit — and then ten gateways each admit a thousand, ten thousand get through, and the limit is a fiction. This is the core problem of distributed rate limiting: local buckets do not add up into one global bucket. Conversely, if you split the quota evenly into 1/N per instance, uneven load bites you: a hot gateway exhausts its share and starts rejecting while the global rate is nowhere near the limit, so you throttle legitimate traffic. The fix is to move the counting into a shared store (usually Redis): every request does a 'check and decrement' against one counter in Redis, so no matter how many gateways there are, the global quota is exact. Spring Cloud Gateway's RequestRateLimiter does exactly this — it uses Redis plus a Lua script to make 'check + decrement' atomic (otherwise two gateways both see one token left and both admit, overshooting the limit). The cost follows: an extra Redis round-trip per request, and Redis becomes a hotspot and a single point. This chapter covers the N× problem, the shared counter and atomicity, the trade-offs of fixed-window / sliding-window / token-bucket algorithms, and the local-plus-global hybrid that eases the load on Redis. The bench lets you switch between local buckets and a shared Redis and watch the global quota go from 'ten times over' or 'wrongly throttled by skew' to exact.",
+    },
+    objectives: [
+      { zh: "解释「本地桶不相加」的 N 倍超额问题", en: "Explain the N× overshoot from local buckets that do not add up" },
+      { zh: "用共享计数器(Redis)对整个网关集群做全局限流", en: "Enforce one global limit across a gateway fleet with a shared counter (Redis)" },
+      { zh: "说清「检查并扣减」为什么必须原子(Lua 脚本)", en: "State why check-and-decrement must be atomic (a Lua script)" },
+      { zh: "对比固定窗口、滑动窗口、令牌桶,并权衡 Redis 往返的代价", en: "Compare fixed-window, sliding-window and token-bucket, and weigh the Redis round-trip cost" },
+    ],
+    outline: [
+      { zh: "单机限流不够:N 倍问题", en: "One instance is not enough: the N× problem" },
+      { zh: "共享计数器与原子性(Redis + Lua)", en: "A shared counter and atomicity (Redis + Lua)" },
+      { zh: "三种算法:固定窗口、滑动窗口、令牌桶", en: "Three algorithms: fixed window, sliding window, token bucket" },
+      { zh: "代价:Redis 往返、热点、本地+全局混合", en: "The cost: Redis round-trip, hotspot, local+global hybrid" },
+    ],
+  },
 
   /* ============ M5 · TX 消息、事务与一致性 ============ */
   {
