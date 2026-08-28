@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hans" data-lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spring Cloud 微服务 · nodes &amp; calls</title>
+<meta name="description" content="中英双语的 Spring Cloud 微服务自学教程:从单体拆分到服务治理,把注册发现(Eureka / Nacos)、声明式调用(OpenFeign)、客户端负载均衡、熔断限流降级(Resilience4j / Sentinel)、API 网关(Spring Cloud Gateway)、配置中心与动态刷新、事件驱动(Spring Cloud Stream)、分布式事务(Seata:AT/TCC/Saga)、链路追踪(Micrometer / Zipkin)、容器化与「不同服务部署到不同服务器」、Kubernetes 弹性伸缩与自动扩容(HPA)、异地多活与跨机房数据复制放进同一套框架里。每章先在「治理台」上把一个分布式场景跑一遍,再读「解释」,最后看 Java / YAML / 部署 三种视角的真实代码。A bilingual course on Spring Cloud microservices — service discovery, gateways, resilience, distributed transactions, tracing, elastic autoscaling and multi-region replication — every chapter opens with a live governance bench and closes with real Spring code." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+
+<link rel="stylesheet" href="styles.css?v=3" />
+<link rel="stylesheet" href="sc.css?v=3" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel (pinned) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <!-- Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+
+  <!-- App scripts (order matters: viz.jsx defines the shared helpers that
+       viz2/3/4 and figures*.jsx reuse; viz4.jsx defines the VIZ registry +
+       <Viz>; figures3.jsx defines <Figure>; code.jsx defines <CodeLab> — all
+       rendered by pages.jsx. ?v is bumped each release to bust the Babel cache. -->
+  <script type="text/babel" src="i18n.jsx?v=3"></script>
+  <script type="text/babel" src="data.jsx?v=3"></script>
+  <script type="text/babel" src="viz.jsx?v=3"></script>
+  <script type="text/babel" src="viz2.jsx?v=3"></script>
+  <script type="text/babel" src="viz3.jsx?v=3"></script>
+  <script type="text/babel" src="viz4.jsx?v=3"></script>
+  <script type="text/babel" src="figures.jsx?v=3"></script>
+  <script type="text/babel" src="figures2.jsx?v=3"></script>
+  <script type="text/babel" src="figures3.jsx?v=3"></script>
+  <script type="text/babel" src="code.jsx?v=3"></script>
+  <script type="text/babel" src="code2.jsx?v=3"></script>
+  <script type="text/babel" src="pages.jsx?v=3"></script>
+  <script type="text/babel" src="app.jsx?v=3"></script>
+</body>
+</html>
