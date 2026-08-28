@@ -732,3 +732,79 @@ Consumer<OrderCreated> points(){
     },
   ],
 };
+
+/* ============ OP4 · sc27 — service mesh ============ */
+CODE.sc27 = {
+  note: {
+    zh: "网格把治理搬到基础设施:第一段 Istio 的 VirtualService/DestinationRule 用 YAML 声明了灰度权重、重试、超时、熔断(outlierDetection)和自动 mTLS——这些原本是 Resilience4j 注解和网关配置。第二段是关键:一旦网格接管,你就要把应用里的 @Retry/@CircuitBreaker 删掉,否则两边都重试会翻倍成风暴;只留下网格无法理解的业务兜底逻辑。第三段是 sidecar 注入——给命名空间打个标签,每个 Pod 就自动多出一个 Envoy 容器(2/2)。",
+    en: "The mesh moves governance into infrastructure: the first listing's Istio VirtualService/DestinationRule declares in YAML the canary weight, retries, timeout, breaking (outlierDetection) and automatic mTLS — things that used to be Resilience4j annotations and gateway config. The second is the key point: once the mesh takes over, delete the app's @Retry/@CircuitBreaker, or retrying in both doubles into a storm; keep only the business fallback the mesh cannot understand. The third is sidecar injection — label the namespace and every pod gains an Envoy container (2/2).",
+  },
+  tabs: [
+    {
+      lang: "istio (traffic)", k: "yaml", file: "order-traffic.yaml",
+      run: "kubectl apply -f order-traffic.yaml   # applied by the Envoy sidecars",
+      src: `# what used to be @Retry / @CircuitBreaker / gateway weight now lives here —
+# language-agnostic, enforced by the sidecars, no app change.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata: { name: order }
+spec:
+  hosts: [ order ]
+  http:
+    - route:
+        - destination: { host: order, subset: v1 }
+          weight: 90          # canary split, service-to-service (not only at the edge)
+        - destination: { host: order, subset: v2 }
+          weight: 10
+      retries: { attempts: 3, perTryTimeout: 500ms }   # replaces @Retry
+      timeout: 2s
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata: { name: order }
+spec:
+  host: order
+  trafficPolicy:
+    tls: { mode: ISTIO_MUTUAL }        # automatic mTLS — no code, no certs to manage
+    outlierDetection:                  # this IS the circuit breaker
+      consecutive5xxErrors: 5
+      baseEjectionTime: 30s
+  subsets:
+    - { name: v1, labels: { version: v1 } }
+    - { name: v2, labels: { version: v2 } }`,
+    },
+    {
+      lang: "Spring (delete)", k: "java", file: "InventoryClient.java",
+      src: `// BEFORE the mesh — resilience lived in the app (Module III):
+@CircuitBreaker(name = "inventory", fallbackMethod = "queued")
+@Retry(name = "inventory")
+public boolean reserve(Cart c){ return inventory.reserve(c); }
+
+// AFTER adopting the mesh — the sidecar does retries, timeouts, breaking and
+// mTLS. DELETE those annotations. Doing BOTH double-retries into a storm.
+public boolean reserve(Cart c){ return inventory.reserve(c); }
+
+// Keep ONLY what the mesh cannot know: business-specific fallback.
+public boolean reserveOrBackorder(Cart c){
+    try { return inventory.reserve(c); }
+    catch (Exception e){ return backorder(c); }   // a business decision, stays in code
+}`,
+    },
+    {
+      lang: "sidecar inject", k: "yaml", file: "namespace.yaml",
+      run: "istioctl install -y && kubectl apply -f namespace.yaml",
+      src: `# label the namespace; Istio auto-injects an Envoy sidecar into every pod
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels: { istio-injection: enabled }
+---
+# after this, every pod runs TWO containers: your app + istio-proxy
+#  $ kubectl get pod -n shop
+#  NAME                READY   STATUS
+#  order-7d9f...       2/2     Running    <- app + Envoy sidecar
+#  inventory-5c8a...   2/2     Running    <- the "2/2" IS the sidecar`,
+    },
+  ],
+};

@@ -483,6 +483,91 @@ function CapstoneViz() {
 }
 
 /* =========================================================
+   sc27 · meshLab — service mesh: library vs sidecar
+   ========================================================= */
+function MeshViz() {
+  const L = useL();
+  const [services, setServices] = React.useState(40);
+  const [hops, setHops] = React.useState(4);
+  // who owns each concern: false = Spring Cloud library, true = the mesh sidecar
+  const [owner, setOwner] = React.useState({ mtls: true, retry: false, breaking: false, lb: false, canary: true, tracing: false });
+  const flip = (k) => setOwner((o) => ({ ...o, [k]: !o[k] }));
+
+  const CONCERNS = [
+    { key: "mtls", label: L("mTLS 加密", "mTLS"), lib: L("逐服务手配 TLS/JWT", "manual TLS per service"), mesh: L("自动双向 TLS", "automatic mTLS") },
+    { key: "retry", label: L("重试/超时", "retry/timeout"), lib: "Resilience4j @Retry", mesh: "VirtualService retries" },
+    { key: "breaking", label: L("熔断", "breaking"), lib: "@CircuitBreaker", mesh: "outlierDetection" },
+    { key: "lb", label: L("负载均衡", "load balancing"), lib: "Spring Cloud LB", mesh: L("Envoy 负载均衡", "Envoy LB") },
+    { key: "canary", label: L("灰度/流量切分", "canary/split"), lib: L("网关权重(仅边缘)", "gateway weight (edge)"), mesh: L("服务间权重", "service-to-service") },
+    { key: "tracing", label: L("链路追踪", "tracing"), lib: L("Micrometer 埋点", "Micrometer instrument"), mesh: L("Envoy 自动 span", "Envoy auto spans") },
+  ];
+
+  const sidecarHop = 0.35;                          // ms per sidecar traversal
+  const latencyTax = hops * 2 * sidecarHop;         // every hop crosses 2 sidecars
+  const baseLatency = hops * 2;                      // ms of app + network work
+  const taxPct = latencyTax / baseLatency;
+  const fleetRam = services * 100;                  // MB, ~100MB per Envoy sidecar
+  const offloaded = CONCERNS.filter((c) => owner[c.key]).length;
+  const inApp = CONCERNS.length - offloaded;
+  const verdict = offloaded === 0 ? L("白交税", "paying, gaining nothing")
+    : offloaded >= 5 ? L("薄应用·多语言统一", "thin app · polyglot")
+      : L("库与网格混合", "library + mesh mix");
+
+  const Cell = ({ text, own }) => (
+    <div style={{ flex: 1, padding: "5px 8px", font: "500 10.5px var(--f-mono)", borderRadius: 4, cursor: "default",
+      background: own ? "color-mix(in srgb, #2e9e6b 16%, transparent)" : "transparent",
+      color: own ? "var(--ink)" : "var(--muted)", border: own ? "1px solid color-mix(in srgb,#2e9e6b 45%,transparent)" : "1px solid transparent" }}>
+      {own ? "✓ " : ""}{text}
+    </div>
+  );
+
+  return (
+    <div>
+      <VizHead idx="OP4" title={L("服务网格:哪些治理下沉到 sidecar,代价是什么", "Service mesh: which governance moves to the sidecar, and at what cost")} />
+      <div className="viz-ctrl">
+        <Slider label={L("服务数(集群)", "Services (fleet)")} min={5} max={120} value={services} onChange={setServices} />
+        <Slider label={L("每请求跳数", "Hops per request")} min={1} max={6} value={hops} onChange={setHops} />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("每请求延迟税", "Latency tax/req")} value={"+" + nf(latencyTax, 1)} unit="ms" tone={taxPct > 0.25 ? "warn" : "acc"} hint={L(`基线的 ${pct(taxPct)}`, `${pct(taxPct)} of baseline`)} />
+        <Kpi label={L("边车内存开销", "Sidecar RAM")} value={nf(fleetRam / 1024, 1)} unit=" GB" tone={fleetRam > 4096 ? "warn" : "ok"} hint={L(`${services} 个 Envoy`, `${services} Envoys`)} />
+        <Kpi label={L("下沉到网格", "Offloaded to mesh")} value={`${offloaded}/6`} tone={offloaded === 0 ? "warn" : "acc"} hint={L(`${inApp} 项仍在库里`, `${inApp} still in libs`)} />
+        <Kpi label={L("结论", "Verdict")} value={verdict} tone={offloaded === 0 ? "warn" : offloaded >= 5 ? "ok" : ""} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("单次请求延迟:应用+网络 vs sidecar 税", "per-request latency: app+network vs sidecar tax")}</div>
+        <Bar label={L("应用 + 网络", "app + network")} value={baseLatency} max={baseLatency + latencyTax} tone="ok" valText={nf(baseLatency, 1) + "ms"} />
+        <Bar label={L("+ sidecar 税", "+ sidecar tax")} value={latencyTax} max={baseLatency + latencyTax} tone={taxPct > 0.25 ? "warn" : "acc"} valText={"+" + nf(latencyTax, 1) + "ms"} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("点击切换每个关注点由「库」还是「网格」来做（绿=当前归属）", "click to assign each concern to 'library' or 'mesh' (green = current owner)")}</div>
+        <div style={{ display: "flex", gap: 6, padding: "0 8px 3px", font: "600 10px var(--f-mono)", color: "var(--muted)" }}>
+          <div style={{ width: 92 }} /><div style={{ flex: 1 }}>{L("Spring Cloud 库", "Spring Cloud lib")}</div><div style={{ flex: 1 }}>{L("服务网格", "service mesh")}</div>
+        </div>
+        {CONCERNS.map((c) => (
+          <div key={c.key} onClick={() => flip(c.key)} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3, cursor: "pointer" }}>
+            <div style={{ width: 88, font: "600 10.5px var(--f-mono)", color: "var(--ink)" }}>{c.label}</div>
+            <Cell text={c.lib} own={!owner[c.key]} />
+            <Cell text={c.mesh} own={owner[c.key]} />
+          </div>
+        ))}
+      </div>
+
+      <Note mark="→" tone={offloaded === 0 ? "bad" : "on"}>
+        {offloaded === 0
+          ? L(`你把每个关注点都留在了 Spring Cloud 库里,却还跑着网格——于是白交延迟税(+${nf(latencyTax, 1)}ms/请求)和 ${nf(fleetRam / 1024, 1)}GB 边车内存,一分好处没拿到。要么把 mTLS、重试、灰度这些下沉给网格,要么干脆别上网格。`,
+              `You left every concern in the Spring Cloud libraries yet still run a mesh — so you pay the latency tax (+${nf(latencyTax, 1)}ms/req) and ${nf(fleetRam / 1024, 1)}GB of sidecar RAM for nothing. Either offload mTLS, retries and canary to the mesh, or do not run a mesh at all.`)
+          : L(`网格把 ${offloaded} 项横切关注点从代码里搬到了 sidecar:它们对 Go/Node/Python 服务同样生效,升级不用改代码。代价是每请求 +${nf(latencyTax, 1)}ms(基线的 ${pct(taxPct)})和 ${nf(fleetRam / 1024, 1)}GB 边车内存。最关键的一条:同一件事只能选一个归属——如果重试既在 @Retry 又在网格里,重试次数会相乘、放大成风暴;mTLS 两边都做则纯属浪费。`,
+              `The mesh moved ${offloaded} cross-cutting concerns out of code into the sidecar: they work identically for Go/Node/Python services and upgrade without code changes. The cost is +${nf(latencyTax, 1)}ms per request (${pct(taxPct)} of baseline) and ${nf(fleetRam / 1024, 1)}GB of sidecar RAM. The crucial rule: pick ONE owner per concern — if retries live in both @Retry and the mesh, the attempt counts multiply into a storm, and doing mTLS in both is pure waste.`)}
+      </Note>
+    </div>
+  );
+}
+
+/* =========================================================
    Registry + <Viz>
    ========================================================= */
 const VIZ = {
@@ -495,6 +580,7 @@ const VIZ = {
   authLab: AuthViz,
   chaosLab: ChaosViz,
   capstoneLab: CapstoneViz,
+  meshLab: MeshViz,
 };
 
 const Viz = ({ name }) => {

@@ -582,6 +582,27 @@ const CHAPTERS = [
       { zh: "RPO 与 RTO:同步还是异步复制", en: "RPO and RTO: synchronous or asynchronous replication" },
     ],
   },
+  {
+    id: "sc27", code: "OP4", moduleId: "m7", difficulty: 3, hours: 6, prereq: ["sc9", "sc22"], viz: "meshLab",
+    props: ["Sidecar 边车", "Istio / Envoy", "数据平面 / 控制平面", "mTLS 与流量管理", "网格 vs 库"],
+    title: { zh: "服务网格:把治理下沉到基础设施", en: "Service Mesh: Pushing Governance Into the Infrastructure" },
+    summary: {
+      zh: "到目前为止,服务治理的能力——熔断、重试、超时、负载均衡、mTLS、链路追踪——都住在你的应用代码里,靠 Resilience4j、Spring Cloud LoadBalancer、Micrometer 这些库实现。这有一个隐藏前提:每个服务都得是 JVM、都得引这些库、都得同步升级它们。一旦你的系统里混进了 Go、Node、Python,这个前提就破了。服务网格(Istio、Linkerd)提出另一种做法:在每个服务的 Pod 旁注入一个 sidecar 代理(通常是 Envoy),让所有进出流量都先过这个代理,于是熔断、重试、mTLS、灰度发布、遥测全部由代理在基础设施层完成,与你的语言和框架无关。控制平面(如 Istiod)统一给成百上千个 sidecar 下发配置。好处是应用代码变薄、多语言团队获得统一治理、安全和流量策略集中管控。代价有两个:延迟税——每一跳现在要多穿过两个 sidecar;以及运维复杂度——你多了一个数据平面(每个 Pod 一个代理)和一个控制平面要部署、升级、排障。本章讲清 sidecar 模型和数据/控制平面,并正面回答那个绕不开的问题:同一件事,该由 Spring Cloud 的库做,还是由网格做?治理台让你把每个横切关注点在「库」和「网格」之间分配,现算出延迟税、边车内存开销、以及那个最危险的坑——两边都做会让重试翻倍、mTLS 白费。",
+      en: "So far, the capabilities of service governance — breaking, retries, timeouts, load balancing, mTLS, tracing — have lived in your application code, implemented by libraries like Resilience4j, Spring Cloud LoadBalancer and Micrometer. That carries a hidden assumption: every service is a JVM, pulls in these libraries, and upgrades them in lockstep. The moment Go, Node or Python join your system, the assumption breaks. A service mesh (Istio, Linkerd) offers another way: inject a sidecar proxy (usually Envoy) beside each service's pod so all traffic in and out passes through it, and then breaking, retries, mTLS, canary releases and telemetry are all done by the proxy at the infrastructure layer, independent of your language and framework. A control plane (such as Istiod) pushes configuration uniformly to hundreds or thousands of sidecars. The upside is thinner application code, uniform governance across polyglot teams, and centrally managed security and traffic policy. The cost is twofold: a latency tax — every hop now crosses two extra sidecars — and operational complexity, because you now have a data plane (a proxy per pod) and a control plane to deploy, upgrade and debug. This chapter works through the sidecar model and the data/control planes, and answers head-on the unavoidable question: should a given concern be handled by a Spring Cloud library or by the mesh? The bench lets you assign each cross-cutting concern between 'library' and 'mesh', computing the latency tax, the sidecar memory overhead, and the most dangerous trap — doing both, which doubles your retries and wastes your mTLS.",
+    },
+    objectives: [
+      { zh: "解释 sidecar 代理模型与数据平面/控制平面的分工", en: "Explain the sidecar proxy model and the split between data plane and control plane" },
+      { zh: "说清哪些横切关注点(mTLS/重试/熔断/负载/灰度/遥测)能下沉到网格", en: "State which cross-cutting concerns (mTLS/retry/breaking/LB/canary/telemetry) can move to the mesh" },
+      { zh: "评估 sidecar 带来的延迟税与集群资源开销", en: "Assess the latency tax and cluster resource overhead sidecars add" },
+      { zh: "决定同一件事该由 Spring Cloud 库还是网格来做——而不是两个都做", en: "Decide whether a concern is owned by a Spring Cloud library or the mesh — not both" },
+    ],
+    outline: [
+      { zh: "把横切关注点搬出代码:sidecar 模型", en: "Moving cross-cutting concerns out of code: the sidecar model" },
+      { zh: "数据平面(Envoy 边车)与控制平面(Istiod)", en: "Data plane (Envoy sidecars) and control plane (Istiod)" },
+      { zh: "网格 vs Spring Cloud:谁来管,别重复", en: "Mesh vs Spring Cloud: who owns it, and do not duplicate" },
+      { zh: "代价:延迟税、资源与运维复杂度", en: "The cost: latency tax, resources and operational complexity" },
+    ],
+  },
 
   /* ============ M8 · HA 安全、韧性与实战 ============ */
   {

@@ -199,6 +199,40 @@ FIGN["sc24-arch"] = function ({ idx }) {
   );
 };
 
+/* ---------------- sc27 · service mesh ---------------- */
+FIGN["sc27-mesh"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={228} cap={L("服务网格在每个 Pod 旁注入一个 sidecar 代理(Envoy),所有服务间流量都经过它:mTLS、重试、熔断、灰度、遥测都在这一层完成,与应用语言无关。控制平面(Istiod)统一给所有 sidecar 下发配置。代价是每一跳都要多穿过两个代理的延迟税。", "A service mesh injects a sidecar proxy (Envoy) beside each pod, and all service-to-service traffic passes through it: mTLS, retries, breaking, canary and telemetry all happen at this layer, independent of the app's language. The control plane (Istiod) pushes configuration uniformly to every sidecar. The price is a latency tax — every hop crosses two extra proxies.")}>
+      {/* control plane */}
+      <FBox x={266} y={20} w={150} h={30} label={L("控制平面 · Istiod", "control plane · Istiod")} tone="a" />
+      <FArrow x1={330} y1={50} x2={232} y2={104} c="var(--muted)" dash />
+      <FArrow x1={352} y1={50} x2={458} y2={104} c="var(--muted)" dash />
+      <FT x={488} y={74} anchor="start" cls="tn">{L("下发配置", "pushes config")}</FT>
+
+      {/* pod A */}
+      <rect x={38} y={96} width={252} height={64} rx="10" fill="none" stroke="var(--hairline-strong)" strokeWidth="1.3" />
+      <FT x={164} y={174} cls="tn">Pod A</FT>
+      <FBox x={52} y={110} w={110} h={38} label={L("订单", "order")} tone="m" />
+      <FBox x={176} y={110} w={100} h={38} label="Envoy" sub="sidecar" tone="p" />
+      <FArrow x1={162} y1={129} x2={176} y2={129} c="var(--muted)" />
+
+      {/* pod B */}
+      <rect x={390} y={96} width={252} height={64} rx="10" fill="none" stroke="var(--hairline-strong)" strokeWidth="1.3" />
+      <FT x={516} y={174} cls="tn">Pod B</FT>
+      <FBox x={404} y={110} w={100} h={38} label="Envoy" sub="sidecar" tone="p" />
+      <FBox x={518} y={110} w={110} h={38} label={L("库存", "inventory")} tone="m" />
+      <FArrow x1={504} y1={129} x2={518} y2={129} c="var(--muted)" />
+
+      {/* mesh hop */}
+      <FArrow x1={276} y1={129} x2={404} y2={129} c="var(--primary)" wdt={2} />
+      <FT x={340} y={120} cls="tk">{L("mTLS · 重试 · 遥测", "mTLS · retry · telemetry")}</FT>
+
+      <FT x={340} y={200} cls="tm">{L("数据平面:每个 Pod 一个 sidecar,组成网格", "data plane: one sidecar per pod forms the mesh")}</FT>
+    </FigFrame>
+  );
+};
+
 /* =========================================================
    <Figure> — resolves a name to a registered figure component
    ========================================================= */
