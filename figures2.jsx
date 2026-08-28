@@ -313,3 +313,35 @@ FIGN["sc31-drift"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc32 · circuit breaker tuning ---------------- */
+FIGN["sc32-tune"] = function ({ idx }) {
+  const L = useL();
+  const x0 = 56, y0 = 26, w0 = 396, h0 = 128;
+  const px = (f) => x0 + f * w0;
+  const py = (p) => y0 + h0 - p * h0;
+  const logit = (f, c, k) => 1 / (1 + Math.exp(-k * (f - c)));
+  const curve = (c, k) => { const a = []; for (let i = 0; i <= 48; i++) { const f = i / 48; a.push(`${i ? "L" : "M"}${px(f).toFixed(1)},${py(logit(f, c, k)).toFixed(1)}`); } return a.join(" "); };
+  return (
+    <FigFrame idx={idx} h={210} cap={L("熔断器的「跳闸概率 vs 下游真实失败率」曲线。太灵敏的曲线在噪声区就抬起来——正常抖动都会误跳闸、把好流量拒掉;太迟钝的曲线要到极端才跳——真故障也挡不住;调好的曲线在噪声区贴地、在阈值处陡峭、在故障区封顶。滑动窗口越大曲线越陡(越抗噪),但检测越慢。", "The breaker's curve of trip probability against the true downstream failure rate. A too-sensitive curve rises inside the noise zone — ordinary hiccups false-trip it and reject good traffic; a too-lax curve only rises at the extreme — it misses real failure; a well-tuned curve hugs the floor in noise, is steep at the threshold, and saturates in the outage zone. A larger sliding window steepens the curve (more noise-proof) but detects slower.")}>
+      <rect x={px(0)} y={y0} width={px(0.12) - px(0)} height={h0} fill="color-mix(in srgb,#2e9e6b 8%,transparent)" />
+      <rect x={px(0.6)} y={y0} width={px(1) - px(0.6)} height={h0} fill="color-mix(in srgb,#c0453f 8%,transparent)" />
+      <line x1={x0} y1={y0 + h0} x2={x0 + w0} y2={y0 + h0} stroke="var(--hairline-strong)" />
+      <line x1={x0} y1={y0} x2={x0} y2={y0 + h0} stroke="var(--hairline-strong)" />
+      <path d={curve(0.18, 12)} fill="none" stroke="#d98a1f" strokeWidth="2" />
+      <path d={curve(0.5, 16)} fill="none" stroke="var(--primary)" strokeWidth="2.4" />
+      <path d={curve(0.85, 16)} fill="none" stroke="var(--muted)" strokeWidth="2" strokeDasharray="5 3" />
+      <FT x={px(0.06)} y={y0 + h0 + 14} cls="tn">{L("噪声区", "noise")}</FT>
+      <FT x={px(0.8)} y={y0 + h0 + 14} cls="tn">{L("故障区", "outage")}</FT>
+      <FT x={px(0.5)} y={y0 + h0 + 26} cls="tm">{L("下游真实失败率 →", "true downstream failure rate →")}</FT>
+      <FT x={x0 - 6} y={y0 + 6} anchor="end" cls="tn">1</FT>
+      <FT x={x0 - 6} y={y0 + h0} anchor="end" cls="tn">0</FT>
+      {/* legend */}
+      <g style={{ font: "600 10px var(--f-mono)" }}>
+        <line x1={472} y1={44} x2={496} y2={44} stroke="#d98a1f" strokeWidth="2.4" /><text x={502} y={47} fill="var(--ink)">{L("太灵敏 → 误跳闸", "too sensitive")}</text>
+        <line x1={472} y1={66} x2={496} y2={66} stroke="var(--primary)" strokeWidth="2.4" /><text x={502} y={69} fill="var(--ink)">{L("调好的", "well tuned")}</text>
+        <line x1={472} y1={88} x2={496} y2={88} stroke="var(--muted)" strokeWidth="2.4" strokeDasharray="5 3" /><text x={502} y={91} fill="var(--ink)">{L("太迟钝 → 没保护", "too lax")}</text>
+      </g>
+    </FigFrame>
+  );
+};

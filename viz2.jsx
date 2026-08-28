@@ -707,6 +707,88 @@ function DriftViz() {
   );
 }
 
+/* =========================================================
+   sc32 · breakerTuneLab — tuning the circuit breaker
+   ========================================================= */
+function BreakerTuneViz() {
+  const L = useL();
+  const [thresh, setThresh] = React.useState(50);   // failureRateThreshold %
+  const [win, setWin] = React.useState(20);         // slidingWindowSize
+  const [minCalls, setMinCalls] = React.useState(10);
+  const [wait, setWait] = React.useState(10);       // waitDurationInOpenState (s)
+  const [dsFail, setDsFail] = React.useState(70);   // current downstream failure %
+  const [traffic, setTraffic] = React.useState(200);
+
+  const T = thresh / 100;
+  const ncdf = (x) => { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; };
+  const pTrip = (f) => { if (f <= 0) return 0; if (f >= 1) return 1; const sd = Math.sqrt(f * (1 - f) / win); if (sd < 1e-6) return f >= T ? 1 : 0; return clamp(ncdf((f - T) / sd), 0, 1); };
+  const noise = 0.05, outage = 0.80;
+  const falseTrip = pTrip(noise);
+  const protection = pTrip(outage);
+  const detectCalls = Math.max(win, minCalls);
+  const detectTime = detectCalls / traffic;
+  const recovery = 8;                              // assumed downstream recovery time (s)
+  const flapping = wait < recovery;
+  const verdict = falseTrip > 0.15 ? L("太灵敏 · 误跳闸", "too sensitive · false trips")
+    : protection < 0.85 ? L("太迟钝 · 没保护", "too lax · no protection")
+      : L("调得不错", "well tuned");
+
+  // trip-probability curve
+  const W = 300, H = 118, pad = 10;
+  const px = (f) => pad + f * (W - 2 * pad);
+  const py = (p) => H - pad - p * (H - 2 * pad);
+  const pts = []; for (let i = 0; i <= 48; i++) { const f = i / 48; pts.push(`${i ? "L" : "M"}${px(f).toFixed(1)},${py(pTrip(f)).toFixed(1)}`); }
+
+  return (
+    <div>
+      <VizHead idx="CM5" title={L("熔断器调参:跳闸概率曲线该多陡,该在哪跳", "Tuning the breaker: how steep the trip curve, and where it flips")} />
+      <div className="viz-ctrl">
+        <Slider label={L("失败率阈值", "failureRateThreshold")} min={10} max={90} step={5} value={thresh} onChange={setThresh} unit="%" />
+        <Slider label={L("滑动窗口大小", "slidingWindowSize")} min={5} max={100} value={win} onChange={setWin} />
+        <Slider label={L("最小调用数", "minimumNumberOfCalls")} min={1} max={Math.max(1, win)} value={Math.min(minCalls, win)} onChange={setMinCalls} />
+        <Slider label={L("开路等待时间", "waitDurationInOpenState")} min={1} max={60} value={wait} onChange={setWait} unit="s" />
+        <Slider label={L("下游当前失败率", "downstream failure now")} min={0} max={100} step={5} value={dsFail} onChange={setDsFail} unit="%" />
+        <Slider label={L("调用量", "traffic")} min={20} max={2000} step={20} value={traffic} onChange={setTraffic} unit=" rps" />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("误跳闸风险", "False-trip risk")} value={pct1(falseTrip)} tone={falseTrip > 0.15 ? "warn" : "ok"} hint={L("下游只是 5% 噪声时", "when downstream is 5% noise")} />
+        <Kpi label={L("故障保护", "Failure protection")} value={pct(protection)} tone={protection < 0.85 ? "warn" : "ok"} hint={L("下游 80% 失败时会跳", "trips when downstream 80% fails")} />
+        <Kpi label={L("检测用时", "Time to detect")} value={nf(detectTime, 1)} unit="s" tone={detectTime > 3 ? "warn" : "ok"} hint={L(`需 ${detectCalls} 次调用`, `needs ${detectCalls} calls`)} />
+        <Kpi label={L("抖动风险", "Flapping risk")} value={flapping ? L("高", "high") : L("低", "low")} tone={flapping ? "warn" : "ok"} hint={flapping ? L("等待<下游恢复", "wait < recovery") : ""} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("跳闸概率 vs 下游真实失败率(想:噪声区≈0,故障区≈1,阈值处陡峭)", "trip probability vs true downstream failure rate (want: ≈0 in noise, ≈1 in outage, steep at the threshold)")}</div>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+          <rect x={px(0)} y={pad} width={px(noise) - px(0)} height={H - 2 * pad} fill="color-mix(in srgb,#2e9e6b 8%,transparent)" />
+          <rect x={px(outage)} y={pad} width={px(1) - px(outage)} height={H - 2 * pad} fill="color-mix(in srgb,#c0453f 8%,transparent)" />
+          <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="var(--hairline-strong)" />
+          <path d={pts.join(" ")} fill="none" stroke="var(--primary)" strokeWidth="2.2" />
+          <line x1={px(T)} y1={pad} x2={px(T)} y2={H - pad} stroke="var(--accent)" strokeWidth="1.4" strokeDasharray="4 3" />
+          <line x1={px(dsFail / 100)} y1={pad} x2={px(dsFail / 100)} y2={H - pad} stroke="var(--muted)" strokeWidth="1.2" />
+          <circle cx={px(noise)} cy={py(falseTrip)} r="3.5" fill={falseTrip > 0.15 ? "#c0453f" : "#2e9e6b"} />
+          <circle cx={px(outage)} cy={py(protection)} r="3.5" fill={protection < 0.85 ? "#c0453f" : "#2e9e6b"} />
+          <text x={px(T)} y={pad + 8} textAnchor="middle" style={{ font: "600 8px var(--f-mono)", fill: "var(--accent)" }}>{L("阈值", "thresh")}</text>
+          <text x={px(0) + 3} y={H - pad - 3} style={{ font: "600 8px var(--f-mono)", fill: "#2e9e6b" }}>{L("噪声区", "noise")}</text>
+          <text x={px(1) - 3} y={H - pad - 3} textAnchor="end" style={{ font: "600 8px var(--f-mono)", fill: "#c0453f" }}>{L("故障区", "outage")}</text>
+        </svg>
+      </div>
+
+      <Note mark="→" tone={falseTrip > 0.15 || protection < 0.85 ? "bad" : "on"}>
+        {falseTrip > 0.15
+          ? L(`太灵敏:在下游只是 5% 噪声时,你的熔断器也有 ${pct1(falseTrip)} 的概率跳闸——它会把好流量拒掉,你亲手制造一次故障。原因通常是阈值太低或窗口太小(样本少,统计噪声就能凑够失败率)。调高 failureRateThreshold、加大 slidingWindowSize、或提高 minimumNumberOfCalls。`,
+              `Too sensitive: when the downstream is merely 5% noise, your breaker still has a ${pct1(falseTrip)} chance of tripping — it rejects good traffic and you manufacture an outage. Usually the threshold is too low or the window too small (few samples, so statistical noise reaches the failure rate). Raise failureRateThreshold, grow slidingWindowSize, or raise minimumNumberOfCalls.`)
+          : protection < 0.85
+          ? L(`太迟钝:即使下游 80% 的调用都在失败,你的熔断器也只有 ${pct(protection)} 的概率跳闸——雪崩照样发生,这个熔断器只是摆设。阈值定得太高了,调低 failureRateThreshold,让它对真实故障敏感起来。`,
+              `Too lax: even when 80% of downstream calls are failing, your breaker only has a ${pct(protection)} chance of tripping — the cascade happens anyway and the breaker is decorative. The threshold is too high; lower failureRateThreshold so it reacts to real failure.`)
+          : L(`调得不错:曲线在噪声区(左)接近 0、在故障区(右)接近 1、在阈值处陡峭——对真实故障快速跳闸,对瞬时噪声视而不见。窗口越大曲线越陡(越不怕噪声),但检测越慢(现在约 ${nf(detectTime, 1)}s)。${flapping ? "但开路等待时间比下游恢复时间还短,半开探针会打到还没好的下游、造成反复开合抖动——把 waitDurationInOpenState 调大。" : "开路等待也够长,不会在下游还没恢复时就反复探测。"}别忘了:慢调用也是失败,配上 slowCallRateThreshold,否则一个只慢不错的下游照样耗尽你的线程。`,
+              `Well tuned: the curve is near 0 in the noise zone (left), near 1 in the outage zone (right), and steep at the threshold — fast to trip on real failure, blind to transient noise. A larger window steepens the curve (more noise-proof) but detects slower (now ~${nf(detectTime, 1)}s). ${flapping ? "But the open-state wait is shorter than the downstream's recovery, so half-open probes hit a still-broken downstream and it flaps open/closed — raise waitDurationInOpenState." : "The open-state wait is long enough not to probe before the downstream recovers."} And remember: slow calls are failures too — set slowCallRateThreshold, or a downstream that is slow-but-not-erroring still exhausts your threads.`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -719,4 +801,5 @@ window.__SC_VIZ_2 = {
   versionLab: VersionViz,
   dlimitLab: DlimitViz,
   driftLab: DriftViz,
+  breakerTuneLab: BreakerTuneViz,
 };

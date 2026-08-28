@@ -301,6 +301,27 @@ const CHAPTERS = [
       { zh: "对内选 gRPC,对外选 REST,以及为什么", en: "gRPC inside, REST at the edge — and why" },
     ],
   },
+  {
+    id: "sc32", code: "CM5", moduleId: "m3", difficulty: 3, hours: 5, prereq: ["sc9"], viz: "breakerTuneLab",
+    props: ["failureRateThreshold", "滑动窗口与最小调用数", "waitDuration 与半开探针", "慢调用阈值", "误跳闸 vs 无保护"],
+    title: { zh: "熔断器调参:在误跳闸和没保护之间找那个点", en: "Tuning the Circuit Breaker: Between False Trips and No Protection" },
+    summary: {
+      zh: "CM3 讲清了熔断器是什么、三个状态怎么把雪崩挡住。但那一章回避了一个真正让人头疼的问题:那些数字到底填多少?熔断器的默认值几乎从不适合你的场景,而调错了,它比没有还糟。调得太灵敏——阈值定得太低、窗口太小、最小调用数太少——它会在下游只是抖了一下的正常噪声里误跳闸,把好好的流量拒掉,你亲手制造了一次故障。调得太迟钝——阈值定到 90%——它几乎永远不跳,雪崩照样发生,那这个熔断器只是配置文件里的一行摆设。真正的功夫在中间:让它对真实故障快速跳闸,又对瞬时噪声视而不见。这需要理解几个参数怎么相互作用:failureRateThreshold(多高的失败率算故障)、slidingWindowSize 和 minimumNumberOfCalls(在多少次调用上统计——太少就会被统计噪声骗到)、waitDurationInOpenState(开路后等多久再探)、以及半开时放几个探针(太少一个坏探针就把它重新打开、造成抖动)。还有一个容易漏的:慢调用也是失败——一个不报错但每次都要 5 秒的下游照样会耗尽你的线程,所以要配 slowCallRateThreshold。本章把这些参数一个个拆开,讲清每个调错的后果。治理台用真实的二项分布,让你看熔断器对下游失败率的「跳闸概率曲线」怎么随参数变陡变缓,以及误跳闸风险和故障保护怎么此消彼长。",
+      en: "CM3 made clear what a circuit breaker is and how its three states hold off a cascade. But that chapter dodged the question that actually causes headaches: what do you set the numbers to? A breaker's defaults are almost never right for your situation, and set wrong, it is worse than none. Too sensitive — threshold too low, window too small, minimum calls too few — and it false-trips on the ordinary noise of a downstream that merely hiccuped, rejecting good traffic and manufacturing an outage with your own hands. Too lax — threshold at 90% — and it almost never trips, the cascade happens anyway, and the breaker is just a decorative line in a config file. The real craft is in the middle: trip fast on real failure yet stay blind to transient noise. That needs understanding how a few parameters interact: failureRateThreshold (how high a failure rate counts as failing), slidingWindowSize and minimumNumberOfCalls (over how many calls you measure — too few and statistical noise fools you), waitDurationInOpenState (how long to stay open before probing), and how many probes you permit in half-open (too few and one bad probe reopens it, causing flapping). And one people miss: slow calls are failures too — a downstream that never errors but takes 5 seconds each time still exhausts your threads, so you configure slowCallRateThreshold. This chapter takes the parameters apart one by one and states the consequence of getting each wrong. The bench uses a real binomial distribution to show how the breaker's trip-probability curve against the downstream failure rate steepens or flattens with your parameters, and how false-trip risk and failure protection trade against each other.",
+    },
+    objectives: [
+      { zh: "解释调得太灵敏(误跳闸)和太迟钝(无保护)各自的后果", en: "Explain the consequences of too-sensitive (false trips) and too-lax (no protection)" },
+      { zh: "用阈值、窗口、最小调用数控制熔断的灵敏度", en: "Control breaker sensitivity with threshold, window and minimum calls" },
+      { zh: "用等待时间与半开探针数避免抖动", en: "Avoid flapping with wait duration and half-open probe count" },
+      { zh: "把慢调用也当作失败来配置(slowCallRateThreshold)", en: "Configure slow calls as failures too (slowCallRateThreshold)" },
+    ],
+    outline: [
+      { zh: "调不好比没有还糟:两个极端", en: "Worse than none: the two extremes" },
+      { zh: "灵敏度:阈值、窗口、最小调用数", en: "Sensitivity: threshold, window, minimum calls" },
+      { zh: "恢复:等待时间与半开探针,别抖动", en: "Recovery: wait duration and half-open probes, don't flap" },
+      { zh: "慢调用也是失败:slowCallRateThreshold", en: "Slow calls are failures too: slowCallRateThreshold" },
+    ],
+  },
 
   /* ============ M4 · GW 网关与配置中心 ============ */
   {

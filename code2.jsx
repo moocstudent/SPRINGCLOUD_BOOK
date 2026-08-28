@@ -1062,3 +1062,68 @@ done`,
     },
   ],
 };
+
+/* ============ CM5 · sc32 — circuit breaker tuning ============ */
+CODE.sc32 = {
+  note: {
+    zh: "第一段是一份调好的 Resilience4j 参数,每个键都标了它控制什么、以及调错的方向。第二段把两种典型的错法摆出来——太灵敏(误跳闸,比没有还糟)和太迟钝(没保护,纯摆设),外加抖动。第三段是经验调参的关键:订阅熔断器的状态转换事件,把 CLOSED→OPEN、OPEN→HALF_OPEN 打出来,你才看得见它在真实流量下怎么跳、怎么恢复,进而对着现象调数字;同时提醒:慢调用也算失败,靠 slowCallRateThreshold 触发。",
+    en: "The first listing is a well-tuned Resilience4j parameter set, each key labeled with what it controls and the direction of getting it wrong. The second lays out the two classic mistakes — too sensitive (false trips, worse than none) and too lax (no protection, decorative) — plus flapping. The third is the key to empirical tuning: subscribe to the breaker's state-transition events and log CLOSED→OPEN, OPEN→HALF_OPEN so you can actually see how it trips and recovers under real traffic and tune the numbers against what you observe; it also reminds you that slow calls count as failures via slowCallRateThreshold.",
+  },
+  tabs: [
+    {
+      lang: "resilience4j.yml", k: "yaml", file: "application.yml",
+      src: `resilience4j:
+  circuitbreaker:
+    instances:
+      bank:
+        # --- sensitivity: when to trip ---
+        failureRateThreshold: 50            # 50% -> good; 10 = false trips; 90 = no protection
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20               # measure over the last 20 calls
+        minimumNumberOfCalls: 10            # don't judge before 10 calls (avoids 1/1 = 100% false trip)
+        # --- slow calls count as failures ---
+        slowCallRateThreshold: 50           # trip if 50% of calls are "slow"
+        slowCallDurationThreshold: 2s       # >2s is slow: it exhausts threads even without erroring
+        # --- recovery ---
+        waitDurationInOpenState: 10s        # stay open 10s before probing (too short -> flapping)
+        permittedNumberOfCallsInHalfOpenState: 5   # too few and one flaky probe reopens it`,
+    },
+    {
+      lang: "mis-tunings", k: "properties", file: "how-to-get-it-wrong.txt",
+      src: `# The two ways to get it wrong
+#
+# TOO SENSITIVE  (false trips — worse than no breaker)
+#   failureRateThreshold: 10     # trips on ordinary noise
+#   slidingWindowSize: 5         # 1 bad call in 5 = 20% -> reacts to statistics, not failure
+#   minimumNumberOfCalls: 2      # judges on almost no evidence
+#   => rejects good traffic; you cause the outage
+#
+# TOO LAX  (no protection — a decorative config line)
+#   failureRateThreshold: 90     # downstream must be almost fully dead to trip
+#   => the cascade happens anyway; the breaker never opens in time
+#
+# FLAPPING  (unstable)
+#   waitDurationInOpenState: 1s              # probes a downstream that needs ~15s to recover
+#   permittedNumberOfCallsInHalfOpenState: 1 # one flaky probe reopens it
+#   => open / closed / open / closed, no steady state`,
+    },
+    {
+      lang: "observe (Java)", k: "java", file: "BreakerTuner.java",
+      src: `// TUNE EMPIRICALLY: watch the breaker's transitions, then adjust the numbers.
+@Component
+class BreakerTuner {
+    BreakerTuner(CircuitBreakerRegistry registry){
+        registry.circuitBreaker("bank").getEventPublisher()
+            .onStateTransition(e ->
+                log.warn("breaker bank: {}", e.getStateTransition()))   // CLOSED->OPEN, OPEN->HALF_OPEN...
+            .onError(e ->
+                log.debug("call failed in {}ms", e.getElapsedDuration().toMillis()));
+    }
+}
+
+// slow calls are failures too — this can trip even if the downstream never errors:
+@CircuitBreaker(name = "bank", fallbackMethod = "queued")
+public PayResult charge(Charge c){ return bankApi.charge(c); }  // >2s counts against slowCallRateThreshold`,
+    },
+  ],
+};
