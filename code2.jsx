@@ -808,3 +808,70 @@ metadata:
     },
   ],
 };
+
+/* ============ GW4 · sc28 — API versioning ============ */
+CODE.sc28 = {
+  note: {
+    zh: "三个视角。网关按版本路由:URI(按 /v1、/v2 路径)最好路由,请求头版本同一路径按 X-API-Version 选后端。Java 里最关键的一段是那个「加法」的 DTO——给 v2 加一个可选字段,老调用方用宽容读取器直接忽略,这种改动根本不需要新版本;只有破坏性改动才另起一个 v2 控制器与 v1 并行。第三段是退场:用 Deprecation / Sunset 响应头告诉调用方截止日期,再按扩展-收缩三步安全删掉 v1。",
+    en: "Three angles. The gateway routes by version: URI (by /v1, /v2 path) routes best; header versioning selects the backend by X-API-Version on the same path. The key Java is the additive DTO — add an optional field to v2 and old callers with a tolerant reader simply ignore it, a change that needs no new version at all; only a breaking change spins up a v2 controller in parallel with v1. The third is retirement: announce the deadline with Deprecation / Sunset headers, then delete v1 safely via the three expand-contract steps.",
+  },
+  tabs: [
+    {
+      lang: "gateway.yml", k: "yaml", file: "gateway/routes.yaml",
+      src: `spring:
+  cloud:
+    gateway:
+      routes:
+        # URI versioning: route by path prefix to the matching backend
+        - id: orders-v1
+          uri: lb://order-service-v1
+          predicates: [ "Path=/v1/orders/**" ]
+          filters: [ "StripPrefix=1" ]        # /v1/orders/42 -> /orders/42
+        - id: orders-v2
+          uri: lb://order-service-v2
+          predicates: [ "Path=/v2/orders/**" ]
+          filters: [ "StripPrefix=1" ]
+        # header versioning: same path, pick the backend by a header
+        - id: orders-hdr-v2
+          uri: lb://order-service-v2
+          predicates:
+            - Path=/orders/**
+            - Header=X-API-Version, 2`,
+    },
+    {
+      lang: "Java", k: "java", file: "OrderControllers.java",
+      src: `// ADDITIVE change — backward compatible, NO new version needed.
+// v2 adds a field; old clients with a tolerant reader simply ignore it.
+public record OrderDto(long id, String sku, int qty,
+                       String status,
+                       String currency) {}    // <- new OPTIONAL field, safe to add
+
+// BREAKING change — needs a new version running in parallel with the old.
+@RestController
+@RequestMapping("/v1/orders")                  // old contract, kept alive
+class OrderV1Controller {
+    @GetMapping("/{id}") OrderV1 get(@PathVariable long id){ return legacy(id); }
+}
+
+@RestController
+@RequestMapping("/v2/orders")                  // new contract
+class OrderV2Controller {
+    @GetMapping("/{id}") OrderV2 get(@PathVariable long id){ return current(id); }
+}`,
+    },
+    {
+      lang: "deprecation", k: "sh", file: "sunset.sh",
+      run: "curl -i https://api.shop.com/v1/orders/5001",
+      src: `# tell callers v1 is going away, with the standard headers (RFC 8594)
+HTTP/2 200
+Deprecation: true                       # this endpoint is deprecated
+Sunset: Sat, 31 Dec 2026 23:59:59 GMT   # it will be REMOVED on this date
+Link: <https://api.shop.com/v2/orders>; rel="successor-version"
+
+# expand-contract (parallel change) — migrate without a big bang:
+#   1. EXPAND   ship v2 alongside v1 (both live)
+#   2. MIGRATE  move callers to v2; watch v1 traffic fall to zero
+#   3. CONTRACT after the sunset date, delete v1`,
+    },
+  ],
+};

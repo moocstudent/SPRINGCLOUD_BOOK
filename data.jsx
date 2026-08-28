@@ -366,6 +366,27 @@ const CHAPTERS = [
       { zh: "配置的灰度、回滚与版本化", en: "Canarying, rolling back and versioning config" },
     ],
   },
+  {
+    id: "sc28", code: "GW4", moduleId: "m4", difficulty: 2, hours: 5, prereq: ["sc10"], viz: "versionLab",
+    props: ["向后兼容", "URI/Header/媒体类型版本", "扩展-收缩", "弃用与退场", "网关路由版本"],
+    title: { zh: "API 版本管理:不打断调用方地演进接口", en: "API Versioning: Evolving an Interface Without Breaking Its Callers" },
+    summary: {
+      zh: "微服务最大的好处是每个服务能独立发布——但这也带来一个尖锐的问题:当你改了订单服务的接口,那些还没跟着改的调用方怎么办?在单体里你可以一次性把所有调用点改完;在微服务里你做不到,调用方各有各的发布节奏,你无法原子地同时升级所有人。API 版本管理就是应对之道,而它的第一课往往被跳过:大多数改动其实根本不需要新版本。只要你只做「加法」(新增字段、新增可选参数)、并让调用方用「宽容的读取器」忽略不认识的字段,老调用方就毫发无损——这叫向后兼容的演进,是最省事的正解。只有当你必须做破坏性改动(删字段、改语义、改类型)时,才需要真正的版本,并且要让 v1 和 v2 并行运行,直到调用方都迁移完。版本放哪也有讲究:URI 路径(/v2/orders,最直观、最好在网关路由、可缓存)、请求头(URL 干净但对缓存和调试不友好)、还是媒体类型(Accept: application/vnd.shop.v2+json,最纯粹也最难测)。本章讲清三件事:什么时候不需要版本;版本该放在哪一层;以及怎么用弃用和退场(Deprecation / Sunset 头 + 扩展-收缩迁移)把老版本体面地退役。治理台让你选改动类型和版本策略,现算出会打断多少调用方、要并行维护几个版本、维护多久。",
+      en: "The great benefit of microservices is that each service deploys independently — but that raises a sharp question: when you change the order service's API, what happens to the callers that have not changed with it? In a monolith you edit every call site at once; in microservices you cannot — callers deploy on their own schedules and you cannot atomically upgrade all of them. API versioning is the answer, and its first lesson is usually skipped: most changes need no new version at all. As long as you make only additive changes (new fields, new optional parameters) and callers use a tolerant reader that ignores fields it does not recognise, old callers are untouched — this is backward-compatible evolution, the cheapest correct answer. Only when you must make a breaking change (remove a field, change a meaning, change a type) do you need a real version, and then you run v1 and v2 in parallel until callers have migrated. Where the version goes matters too: the URI path (/v2/orders — most visible, easiest to route at the gateway, cacheable), a header (clean URL but unfriendly to caching and debugging), or the media type (Accept: application/vnd.shop.v2+json — purest, hardest to test). This chapter covers three things: when you do not need a version; which layer the version belongs in; and how to retire an old version gracefully with deprecation and sunset (Deprecation / Sunset headers plus expand-contract migration). The bench lets you choose the change type and versioning strategy and computes how many callers break, how many versions you must maintain in parallel, and for how long.",
+    },
+    objectives: [
+      { zh: "区分向后兼容(加法)与破坏性改动,并优先选前者", en: "Distinguish backward-compatible (additive) from breaking changes, and prefer the former" },
+      { zh: "对比 URI、请求头、媒体类型三种版本放置方式的取舍", en: "Compare the trade-offs of URI, header and media-type versioning" },
+      { zh: "用扩展-收缩(并行变更)在不打断调用方的情况下做破坏性演进", en: "Use expand-contract (parallel change) to evolve without breaking callers" },
+      { zh: "用弃用与退场(Deprecation/Sunset)把旧版本退役", en: "Retire an old version with deprecation and sunset" },
+    ],
+    outline: [
+      { zh: "为什么要版本:调用方无法被你原子升级", en: "Why version: you cannot atomically upgrade the callers" },
+      { zh: "先别急着加版本:向后兼容的演进", en: "Before you version: backward-compatible evolution" },
+      { zh: "版本放哪:URI / 请求头 / 媒体类型", en: "Where the version goes: URI / header / media type" },
+      { zh: "并行运行与退场:弃用、日落、迁移", en: "Running in parallel and sunsetting: deprecate, sunset, migrate" },
+    ],
+  },
 
   /* ============ M5 · TX 消息、事务与一致性 ============ */
   {

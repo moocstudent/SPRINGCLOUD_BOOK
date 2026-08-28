@@ -494,6 +494,85 @@ function RpcViz() {
   );
 }
 
+/* =========================================================
+   sc28 · versionLab — API versioning: break, or evolve
+   ========================================================= */
+function VersionViz() {
+  const L = useL();
+  const [consumers, setConsumers] = React.useState(20);
+  const [change, setChange] = React.useState("breaking");   // additive | breaking
+  const [strategy, setStrategy] = React.useState("uri");    // inplace | uri | header | media
+  const [weeks, setWeeks] = React.useState(8);
+
+  const additive = change === "additive";
+  const inPlace = strategy === "inplace";
+  const broken = additive ? 0 : (inPlace ? consumers : 0);
+  const versions = additive ? 1 : (inPlace ? 1 : 2);
+  const maint = additive ? 0 : (inPlace ? 0 : weeks);
+  const disaster = broken > 0;
+  const verdict = additive ? L("无需新版本", "no version needed")
+    : inPlace ? L("全员破坏", "everyone breaks")
+      : L(`并行 ${weeks} 周`, `${weeks} wks in parallel`);
+
+  const STRATS = [
+    { key: "inplace", label: L("就地改 (无版本)", "in-place (no version)"), ex: "PUT /orders", note: L("直接改 v1;破坏性改动=打断所有调用方", "change v1 directly; a breaking change breaks everyone") },
+    { key: "uri", label: L("URI 路径", "URI path"), ex: "GET /v2/orders", note: L("最直观、易在网关路由、可缓存", "visible, easy to route at the gateway, cacheable") },
+    { key: "header", label: L("请求头", "header"), ex: "X-API-Version: 2", note: L("URL 干净,但缓存/调试不友好", "clean URL, but cache/debug unfriendly") },
+    { key: "media", label: L("媒体类型", "media type"), ex: "Accept: …vnd.shop.v2+json", note: L("内容协商,最纯粹也最难测", "content negotiation, purest, hardest to test") },
+  ];
+
+  return (
+    <div>
+      <VizHead idx="GW4" title={L("API 版本:一个改动打断多少调用方", "API versioning: how many callers a change breaks")} />
+      <div className="viz-ctrl">
+        <Slider label={L("调用方数量", "Callers")} min={3} max={50} value={consumers} onChange={setConsumers} />
+        <label><span>{L("改动类型", "Change type")}</span><Seg value={change} onChange={setChange} options={[{ v: "additive", l: L("向后兼容(加法)", "additive") }, { v: "breaking", l: L("破坏性", "breaking") }]} /></label>
+        <Slider label={L("调用方迁移周期", "Migration window")} min={1} max={26} value={weeks} onChange={setWeeks} unit={L(" 周", " wks")} />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("被打断的调用方", "Callers broken")} value={broken} unit={L(" 个", "")} tone={broken > 0 ? "warn" : "ok"} hint={broken > 0 ? L("发布即断", "break on deploy") : L("零打断", "zero broken")} />
+        <Kpi label={L("并行维护的版本", "Versions in parallel")} value={versions} tone={versions > 1 ? "acc" : "ok"} />
+        <Kpi label={L("双版本维护", "Dual maintenance")} value={maint} unit={L(" 周", " wks")} tone={maint > 12 ? "warn" : maint > 0 ? "acc" : "ok"} />
+        <Kpi label={L("结论", "Verdict")} value={verdict} tone={disaster ? "warn" : additive ? "ok" : "acc"} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <Bar label={L("安全的调用方", "callers safe")} value={consumers - broken} max={consumers} tone="ok" valText={`${consumers - broken}`} />
+        <Bar label={L("被打断的调用方", "callers broken")} value={broken} max={consumers} tone="warn" valText={`${broken}`} />
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="sc-cap">{L("版本放哪(点击选择;破坏性改动时才需要)", "where the version goes (click to pick; only needed for a breaking change)")}</div>
+        {STRATS.map((s) => {
+          const on = strategy === s.key;
+          const bad = s.key === "inplace" && !additive;
+          return (
+            <div key={s.key} onClick={() => setStrategy(s.key)} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, cursor: "pointer",
+              padding: "5px 8px", borderRadius: 6,
+              background: on ? (bad ? "color-mix(in srgb,#c0453f 12%,transparent)" : "color-mix(in srgb,var(--primary) 10%,transparent)") : "transparent",
+              border: on ? `1px solid ${bad ? "#c0453f" : "var(--primary)"}` : "1px solid var(--hairline)" }}>
+              <span style={{ width: 120, font: "600 11px var(--f-mono)", color: on ? "var(--ink)" : "var(--muted)" }}>{on ? "● " : ""}{s.label}</span>
+              <code style={{ font: "600 10.5px var(--f-mono)", color: "var(--accent)", minWidth: 150 }}>{s.ex}</code>
+              <span style={{ font: "500 10px var(--f-mono)", color: "var(--muted)", flex: 1 }}>{s.note}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <Note mark="→" tone={disaster ? "bad" : "on"}>
+        {additive
+          ? L("这是最好的结果:向后兼容的加法改动不需要新版本。只加可选字段、绝不删字段或改语义,调用方用宽容的读取器忽略不认识的字段——你一个版本都不用额外维护。先穷尽这条路,再考虑加版本。", "This is the best outcome: a backward-compatible additive change needs no new version. Only add optional fields, never remove or change a meaning, and callers with a tolerant reader ignore what they do not recognise — you maintain no extra version at all. Exhaust this path before reaching for a version.")
+          : inPlace
+          ? L(`破坏性改动却就地改 v1:所有还没迁移的调用方在你发布的那一刻全断了(这里 ${consumers} 个)。这正是版本管理要防的事故。给这个改动一个新版本,让 v1 与 v2 并行,谁也不打断。`,
+              `A breaking change made in place: every caller that has not migrated breaks the instant you deploy (${consumers} here). This is exactly the incident versioning exists to prevent. Give the change a new version and run v1 and v2 in parallel so nobody breaks.`)
+          : L(`破坏性改动 + 版本并行:老调用方继续走 v1、不受影响,新调用方走 v2。代价是你要同时维护两个版本约 ${weeks} 周,直到调用方都迁移完。用 Deprecation / Sunset 响应头告诉他们截止日期,迁移完就退役 v1——${strategy === "uri" ? "URI 版本最容易在网关直接按路径路由。" : strategy === "header" ? "请求头版本 URL 干净,但记得让缓存对版本头敏感。" : "媒体类型版本最纯粹,但要接受更高的测试与调试成本。"}`,
+              `A breaking change with parallel versions: old callers stay on v1 untouched, new callers use v2. The cost is maintaining two versions for about ${weeks} weeks until callers migrate. Tell them the deadline with Deprecation / Sunset response headers and retire v1 once migration is done — ${strategy === "uri" ? "URI versions are the easiest to route by path at the gateway." : strategy === "header" ? "header versions keep the URL clean, but make caches vary on the version header." : "media-type versions are the purest, at a higher testing and debugging cost."}`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -503,4 +582,5 @@ window.__SC_VIZ_2 = {
   rateLab: RateViz,
   configLab: ConfigViz,
   rpcLab: RpcViz,
+  versionLab: VersionViz,
 };

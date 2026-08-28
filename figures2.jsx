@@ -228,3 +228,27 @@ FIGN["sc26-grpc"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc28 · API versioning ---------------- */
+FIGN["sc28-version"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={214} cap={L("破坏性改动时,让新旧版本并行:网关按 /v1、/v2(或请求头、媒体类型)把调用方路由到对应版本。老调用方继续用 v1、不受影响,你用 Deprecation / Sunset 响应头通知截止日期,等大家迁移到 v2 后再退役 v1。加法改动则根本不需要新版本。", "For a breaking change, run the old and new versions in parallel: the gateway routes callers to the right version by /v1, /v2 (or a header, or a media type). Old callers stay on v1, untouched; you announce the deadline with Deprecation / Sunset headers, and retire v1 once everyone has migrated to v2. An additive change needs no new version at all.")}>
+      <FBox x={24} y={72} w={62} h={36} label={L("调用方", "callers")} tone="m" />
+      <FArrow x1={86} y1={90} x2={110} y2={90} c="var(--muted)" />
+      <FBox x={112} y={66} w={104} h={48} label={L("网关", "Gateway")} sub={L("按版本路由", "route by version")} tone="p" />
+      <FArrow x1={216} y1={78} x2={352} y2={54} c="#d98a1f" />
+      <FArrow x1={216} y1={102} x2={352} y2={140} c="#2e9e6b" />
+      <FT x={288} y={56} cls="tn">/v1/**</FT>
+      <FT x={288} y={140} cls="tn">/v2/**</FT>
+      <FBox x={354} y={36} w={150} h={40} label={L("订单 v1", "order v1")} sub={L("弃用 · 日落 2026-12", "deprecated · sunset 2026-12")} tone="warn" />
+      <FBox x={354} y={120} w={150} h={40} label={L("订单 v2", "order v2")} sub={L("当前", "current")} tone="ok" />
+      <FT x={520} y={60} anchor="start" cls="tn">{L("← 老调用方仍可用", "← old callers still work")}</FT>
+      <line x1={40} y1={182} x2={640} y2={182} stroke="var(--hairline)" strokeDasharray="3 3" />
+      <FT x={40} y={200} anchor="start" cls="tm">{L("版本可放在:", "the version can live in:")}</FT>
+      <FT x={168} y={200} anchor="start" cls="tk">URI /v2/orders</FT>
+      <FT x={330} y={200} anchor="start" cls="tk">X-API-Version: 2</FT>
+      <FT x={490} y={200} anchor="start" cls="tk">Accept: …v2+json</FT>
+    </FigFrame>
+  );
+};
