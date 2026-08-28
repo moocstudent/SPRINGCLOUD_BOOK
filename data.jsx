@@ -12,7 +12,7 @@
 
 const MODULES = [
   {
-    id: "m1", code: "FD", accent: "primary", level: 1,
+    id: "m1", arch: "m1-arch", code: "FD", accent: "primary", level: 1,
     zh: "微服务与 Spring Cloud 全景", en: "Microservices & the Spring Cloud Landscape",
     tagline: { zh: "微服务不是把代码拆小,是把一个进程内的方法调用换成一个会失败、会延迟、会掉线的网络调用。", en: "Microservices is not chopping code small; it is trading an in-process method call for a network call that fails, delays and drops." },
     description: {
@@ -21,7 +21,7 @@ const MODULES = [
     },
   },
   {
-    id: "m2", code: "RD", accent: "accent", level: 1,
+    id: "m2", arch: "m2-arch", code: "RD", accent: "accent", level: 1,
     zh: "服务注册与发现", en: "Service Registry & Discovery",
     tagline: { zh: "服务的地址每天都在变——扩容、重启、漂移。注册中心就是那本必须永远新鲜、又永远追不上真相的电话簿。", en: "A service's address changes daily — scale, restart, drift. The registry is the phone book that must stay fresh and can never quite catch the truth." },
     description: {
@@ -30,7 +30,7 @@ const MODULES = [
     },
   },
   {
-    id: "m3", code: "CM", accent: "primary", level: 2,
+    id: "m3", arch: "m3-arch", code: "CM", accent: "primary", level: 2,
     zh: "通信、负载与弹性", en: "Communication, Load Balancing & Resilience",
     tagline: { zh: "一次远程调用有三种结局:成功、失败、以及最危险的那种——很久很久以后才失败。", en: "A remote call has three outcomes: success, failure, and the dangerous one — failure after a very long wait." },
     description: {
@@ -39,7 +39,7 @@ const MODULES = [
     },
   },
   {
-    id: "m4", code: "GW", accent: "accent", level: 2,
+    id: "m4", arch: "m4-arch", code: "GW", accent: "accent", level: 2,
     zh: "网关与配置中心", en: "Gateway & Configuration",
     tagline: { zh: "一百个服务不该有一百个入口、一百份配置。网关收拢入口,配置中心收拢真相。", en: "A hundred services should not have a hundred front doors or a hundred config files. The gateway centralises entry; the config server centralises truth." },
     description: {
@@ -48,7 +48,7 @@ const MODULES = [
     },
   },
   {
-    id: "m5", code: "TX", accent: "primary", level: 3,
+    id: "m5", arch: "m5-arch", code: "TX", accent: "primary", level: 3,
     zh: "消息、事务与一致性", en: "Messaging, Transactions & Consistency",
     tagline: { zh: "单体里一个 @Transactional 就搞定的事,拆开之后变成分布式系统里最难的一道题。", en: "What one @Transactional handled in the monolith becomes the hardest question in distributed systems once you split it." },
     description: {
@@ -57,7 +57,7 @@ const MODULES = [
     },
   },
   {
-    id: "m6", code: "OB", accent: "accent", level: 2,
+    id: "m6", arch: "m6-arch", code: "OB", accent: "accent", level: 2,
     zh: "可观测性", en: "Observability",
     tagline: { zh: "单体报错你看一份日志就够了。请求跨了八个服务之后,「哪里慢了」本身就成了一个需要工具才能回答的问题。", en: "In a monolith one log tells you enough. After a request crosses eight services, 'where did it get slow' becomes a question you need tooling to answer." },
     description: {
@@ -66,7 +66,7 @@ const MODULES = [
     },
   },
   {
-    id: "m7", code: "OP", accent: "primary", level: 3,
+    id: "m7", arch: "m7-arch", code: "OP", accent: "primary", level: 3,
     zh: "部署、弹性伸缩与多机房", en: "Deployment, Elastic Scaling & Multi-Region",
     tagline: { zh: "架构图上服务是一个个方框;在生产里,它们是跑在具体机器上、会因为一台机器宕机而一起消失的进程。", en: "On the diagram, services are boxes; in production they are processes on specific machines that vanish together when one machine dies." },
     description: {
@@ -75,7 +75,7 @@ const MODULES = [
     },
   },
   {
-    id: "m8", code: "HA", accent: "accent", level: 3,
+    id: "m8", arch: "m8-arch", code: "HA", accent: "accent", level: 3,
     zh: "安全、韧性与实战", en: "Security, Resilience & Capstone",
     tagline: { zh: "系统的强度不等于晴天时的强度,等于故障、攻击、和你从没想过的组合同时发生时,它还剩多少。", en: "A system's strength is not what it has on a sunny day; it is what remains when failure, attack and combinations you never imagined all arrive at once." },
     description: {

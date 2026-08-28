@@ -318,6 +318,17 @@ const ModulePage = ({ moduleId, progress, nav }) => {
           </div>
         </section>
 
+        {m.arch && typeof Figure !== "undefined" && (
+          <section style={{ padding: "8px 0 8px" }}>
+            <div className="sect-head" style={{ marginBottom: 8 }}>
+              <div className="num">§ ARCHITECTURE</div>
+              <div className="title"><span className="cn">{lang === "zh" ? "架构总览" : "Architecture"}</span></div>
+              <div className="aside">{lang === "zh" ? "这个模块的组件在整体里的位置" : "where this module's pieces sit in the whole"}</div>
+            </div>
+            <Figure name={m.arch} />
+          </section>
+        )}
+
         <section style={{ padding: "32px 0 80px" }}>
           <div className="sect-head" style={{ marginBottom: 0 }}>
             <div className="num">§ CHAPTERS</div>
