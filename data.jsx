@@ -557,6 +557,27 @@ const CHAPTERS = [
       { zh: "按工作负载选型;以及 Stream 让你晚点再决定", en: "Choosing by workload; and how Stream lets you decide later" },
     ],
   },
+  {
+    id: "sc34", code: "TX5", moduleId: "m5", difficulty: 3, hours: 6, prereq: ["sc33", "sc13"], viz: "tsIntegLab",
+    props: ["OLTP vs OLAP", "事件驱动接入(Stream/Kafka)", "CDC 增量同步", "禁止共享业务库", "异常结果经 Java 回流"],
+    title: { zh: "时序服务的数据接入:直连库、调接口,还是走事件?", en: "Data Integration for a Time-Series Service: Direct DB, API, or Events?" },
+    summary: {
+      zh: "上一章把一个 Python 时序服务接进了 Spring Cloud——网关、注册、发现都通了。但一个真正落地的服务(比如给 ERP 做功率监控与异常检测)最难的一步还没解决:它的数据从哪来、结果往哪去?一个几乎所有人第一反应都会犯的错,是让 Python 直接连上 Java 业务服务的那个数据库,一把梭。这一章正面讲清为什么不能这么干,以及该怎么干。核心是一条红线:业务数据归 Java 服务所有,Python 一律不直连它的 OLTP 库——直连会造成 schema 耦合(Java 改一次表,Python 半夜就崩)、绕过校验与审计、更致命的是在交易库上和在线业务抢资源,把业务的 P99 拖爆。但「不直连」不等于「只能调接口」:要按访问模式分三条路。在线实时(比如对每一条新读数打分判异常)走事件——Java 侧把遥测事件发到 Kafka(Spring Cloud Stream),Python 订阅、打分、再把异常事件发回 Kafka,由告警/工单服务消费;Python 全程不碰业务库,还天然解耦、能按分区扩并行。批量训练(拉几百万行历史喂模型)既不该用 REST 翻页硬拉(太慢、还是压着业务库),也不该连主库,而是走 CDC(Debezium/Canal)把 OLTP 增量同步到分析库(TimescaleDB/ClickHouse),Python 直连分析库跑 SQL——注意,连分析库是对的:它是数据侧自有的、列存读优化的库,不是 Java 的交易库。而 Python 自己的模型、特征、异常分数,存 Python 自有库。治理台用一个真实的排队论模型,让你选「直连业务库 / 调 Java 接口 / 事件+CDC」三种接法,看训练拉数耗时、业务库利用率被推到多高、业务 P99 因此恶化多少、以及 schema 耦合度怎么此消彼长——你会看到直连一开训练,业务库利用率就冲到 0.83、P99 直接翻几倍。",
+      en: "The last chapter got a Python time-series service into Spring Cloud — gateway, registration, discovery all wired. But the hardest step for a service that actually ships (say power monitoring and anomaly detection for an ERP) is still open: where does its data come from, and where do results go? The mistake almost everyone reaches for first is to point Python straight at the Java business service's database and be done. This chapter explains head-on why you must not, and what to do instead. The core is one red line: business data is owned by the Java service, and Python never connects to its OLTP database directly — a direct connection causes schema coupling (the Java team migrates a table and Python breaks at 3 a.m.), bypasses validation and audit, and most fatally contends for resources on the transactional database, blowing out the business's P99. But 'no direct connection' does not mean 'only call the API': split by access pattern into three roads. Online real-time (scoring each new reading for anomalies) goes through events — the Java side publishes telemetry events to Kafka (Spring Cloud Stream), Python subscribes, scores, and publishes anomaly events back to Kafka for the alert/ticket service to consume; Python never touches the business DB, and it is naturally decoupled and parallelizable by partition. Batch training (pulling millions of historical rows to feed a model) should neither be forced through REST pagination (too slow, still loads the business DB) nor connect to the primary — instead use CDC (Debezium/Canal) to replicate OLTP increments into an analytics store (TimescaleDB/ClickHouse), and Python connects directly to the analytics store and runs SQL — note that connecting to the analytics store is correct: it is the data side's own, columnar, read-optimized store, not the Java transactional DB. And Python's own models, features and anomaly scores go in Python's own store. The bench uses a real queueing model to let you pick among direct-DB / Java-API / events+CDC and watch training pull time, how high the business DB's utilization is pushed, how much the business P99 degrades as a result, and how schema coupling trades off — you will see that the moment a direct-connect training run starts, the business DB's utilization jumps to 0.83 and P99 multiplies.",
+    },
+    objectives: [
+      { zh: "判断一个时序服务该直连库、调接口还是订阅事件", en: "Decide whether a time-series service should use direct DB, an API, or events" },
+      { zh: "用排队论解释直连业务 OLTP 为什么拖垮在线业务", en: "Use queueing to explain why direct OLTP access drags down the online business" },
+      { zh: "在线用事件、训练用 CDC→分析库,各承接对的负载", en: "Take online load via events and training via CDC→analytics store" },
+      { zh: "让异常结果经 Java 接口/事件回流,带业务校验与幂等", en: "Route anomaly results back through Java APIs/events with validation and idempotency" },
+    ],
+    outline: [
+      { zh: "一个功率异常检测服务,数据从哪来?", en: "A power-anomaly service: where does its data come from?" },
+      { zh: "红线:不共享业务库(OLTP)", en: "The red line: don't share the business DB (OLTP)" },
+      { zh: "在线走事件,训练走 CDC→分析库", en: "Online via events, training via CDC→analytics store" },
+      { zh: "异常回流:结果写回也要经 Java", en: "Backflow: write results back through Java too" },
+    ],
+  },
 
   /* ============ M6 · OB 可观测性 ============ */
   {

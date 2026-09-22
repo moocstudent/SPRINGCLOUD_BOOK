@@ -1223,3 +1223,90 @@ services:
     },
   ],
 };
+
+/* ============ TX5 · sc34 — time-series data integration ============ */
+CODE.sc34 = {
+  note: {
+    zh: "第一段是 Python 在线打分器:从 Kafka 订阅遥测、用模型打分、异常就发一条事件回 Kafka——它不碰业务库,只连 Kafka 和自己的模型文件;末尾的 train.py 展示离线训练从分析库(ClickHouse)直连读几百万行,而不是连 OLTP。第二段是 Java 业务侧:它拥有 OLTP 和写路径,负责把遥测发成事件、以及消费异常事件去开工单——异常结果经 Java 回流,业务校验、审计、幂等(靠 meterId+ts 去重)才跑得到。第三段是 CDC:Debezium 追 binlog 把 OLTP 的行变更增量灌进 Kafka,再由 Kafka→ClickHouse sink 落到分析库,全程不在业务库上跑大查询。",
+    en: "The first listing is the Python online scorer: subscribe to telemetry from Kafka, score with the model, and on an anomaly publish an event back to Kafka — it never touches the business DB, only Kafka and its own model file; the trailing train.py shows offline training reading millions of rows straight from the analytics store (ClickHouse), not from OLTP. The second is the Java business side: it owns the OLTP and the write path, publishing telemetry as events and consuming anomaly events to open tickets — anomaly results flow back through Java so validation, audit and idempotency (dedup by meterId+ts) actually run. The third is CDC: Debezium tails the binlog to stream OLTP row changes into Kafka, and a Kafka→ClickHouse sink lands them in the analytics store — no big query ever runs on the business DB.",
+  },
+  tabs: [
+    {
+      lang: "Python", k: "python", file: "scorer.py",
+      src: `# ONLINE: consume telemetry from Kafka, score, publish anomalies back.
+# Python never touches the business OLTP DB — only Kafka + its own model.
+from confluent_kafka import Consumer, Producer
+import json, joblib
+
+THRESHOLD = -0.5
+model = joblib.load("power_anomaly.pkl")            # trained offline (see below)
+consumer = Consumer({"bootstrap.servers": "kafka:9092",
+                     "group.id": "ts-anomaly", "auto.offset.reset": "latest"})
+producer = Producer({"bootstrap.servers": "kafka:9092"})
+consumer.subscribe(["meter.telemetry"])             # published by the Java side
+
+while True:
+    msg = consumer.poll(1.0)
+    if msg is None or msg.error():
+        continue
+    r = json.loads(msg.value())                     # {meter_id, ts, kw, kvar}
+    trace = dict(msg.headers() or {}).get("traceparent")   # keep the trace flowing
+    score = float(model.decision_function([[r["kw"], r["kvar"]]])[0])
+    if score < THRESHOLD:                            # anomaly -> emit an EVENT, not a DB write
+        producer.produce("meter.anomaly", json.dumps(
+            {"meter_id": r["meter_id"], "ts": r["ts"], "score": score}),
+            headers={"traceparent": trace})
+
+# === train.py (OFFLINE) — read history from the ANALYTICS store, not OLTP ===
+# import clickhouse_connect
+# ch = clickhouse_connect.get_client(host="clickhouse", database="metering")
+# df = ch.query_df("SELECT kw, kvar, is_fault FROM meter_readings "
+#                  "WHERE ts > now() - INTERVAL 90 DAY")   # millions of rows, columnar
+# ...fit..., joblib.dump(model, "power_anomaly.pkl")`,
+    },
+    {
+      lang: "Java (Stream)", k: "java", file: "TelemetryFlow.java",
+      src: `// The Java business side OWNS the OLTP data and the write path.
+// It publishes telemetry as events, and consumes anomaly events back.
+@Component
+class TelemetryFlow {
+    private final StreamBridge bus;
+    private final TicketService tickets;
+    TelemetryFlow(StreamBridge bus, TicketService tickets){ this.bus = bus; this.tickets = tickets; }
+
+    // when a meter reading is saved -> emit an event (outbox-safe, see TX3)
+    void onReading(Reading r){
+        bus.send("meterTelemetry-out-0",
+                 new Telemetry(r.meterId(), r.ts(), r.kw(), r.kvar()));
+    }
+}
+
+// Anomaly events flow BACK through Java, so business rules + audit + idempotency run.
+@Bean
+Consumer<Anomaly> meterAnomaly() {
+    return a -> tickets.openIfAbsent(         // idempotent: dedup by (meterId, ts)
+        a.meterId(), a.ts(), "功率异常 score=" + a.score());
+}
+// binding (application.yml):
+//   spring.cloud.stream.bindings.meterTelemetry-out-0.destination: meter.telemetry
+//   spring.cloud.stream.bindings.meterAnomaly-in-0.destination:    meter.anomaly`,
+    },
+    {
+      lang: "CDC (Debezium)", k: "properties", file: "metering-source.properties",
+      src: `# CDC: stream OLTP row changes into Kafka with ZERO analytical load on the
+# business DB — Debezium tails the binlog, it never runs big SELECTs.
+name=metering-oltp-source
+connector.class=io.debezium.connector.mysql.MySqlConnector
+database.hostname=oltp-mysql
+database.server.id=184054
+database.include.list=metering
+table.include.list=metering.meter_readings
+topic.prefix=cdc
+snapshot.mode=when_needed
+
+# A Kafka -> ClickHouse sink connector then lands cdc.metering.meter_readings
+# into the columnar analytics store that Python reads for training.
+# OLTP stays untouched; training never competes with the business.`,
+    },
+  ],
+};

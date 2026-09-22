@@ -581,6 +581,96 @@ function SampleViz() {
   );
 }
 
+/* =========================================================
+   sc34 · tsIntegLab — data integration for a time-series
+   service: direct DB vs Java API vs events+CDC. Uses an
+   M/M/1-style queueing model to show what a big analytical
+   read does to the business DB's P99.
+   ========================================================= */
+function TsIntegViz() {
+  const L = useL();
+  const [mode, setMode] = React.useState("directDB");   // directDB | javaApi | eventCdc
+  const [trainRows, setTrainRows] = React.useState(50);  // million rows to pull for training
+  const [bizQps, setBizQps] = React.useState(2000);      // steady business load on the OLTP
+  const [onlineRps, setOnlineRps] = React.useState(300); // online scoring requests/s
+  const CAP = 6000;                                      // OLTP capacity (ops/s)
+
+  const CFG = {
+    directDB: { scanOps: 3000, rowRate: 2e5, onlineMs: 8, onlineOnOltp: true, coup: L("高", "high"), coupTone: "bad" },
+    javaApi: { scanOps: 1000, rowRate: 3e4, onlineMs: 25, onlineOnOltp: true, coup: L("中", "med"), coupTone: "warn" },
+    eventCdc: { scanOps: 150, rowRate: 5e6, onlineMs: 5, onlineOnOltp: false, coup: L("低", "low"), coupTone: "ok" },
+  }[mode];
+
+  const onlineLoad = CFG.onlineOnOltp ? onlineRps : 0;
+  const totalOltp = bizQps + CFG.scanOps + onlineLoad;
+  const rhoBase = bizQps / CAP;
+  const rhoNow = totalOltp / CAP;
+  const overload = rhoNow >= 1;
+  const factor = overload ? Infinity : (1 - rhoBase) / (1 - rhoNow);   // P99 latency multiplier
+  const impactPct = overload ? Infinity : Math.round((factor - 1) * 100);
+  const pullSec = trainRows * 1e6 / CFG.rowRate;
+  const pullTxt = pullSec >= 90 ? `${nf(pullSec / 60, 1)} min` : `${nf(pullSec, 0)} s`;
+  const impactTxt = overload ? L("过载", "overload") : `+${impactPct}%`;
+
+  // OLTP capacity bar
+  const W = 300, H = 26;
+  const seg = (v) => Math.max(0, Math.min(W, v / CAP * W));
+  const wBiz = seg(bizQps), wScan = seg(CFG.scanOps), wOn = seg(onlineLoad);
+  const used = wBiz + wScan + wOn;
+  const wFree = Math.max(0, W - used);
+
+  return (
+    <div>
+      <VizHead idx="TX5" title={L("时序服务的数据接入:一开训练,业务库被推到多高?",
+        "Data integration for a time-series service: how hard does a training run push the business DB?")} />
+      <div className="viz-ctrl">
+        <label><span>{L("接入方式", "integration mode")}</span>
+          <Seg value={mode} onChange={setMode} options={[
+            { v: "directDB", l: L("直连业务库", "direct DB") },
+            { v: "javaApi", l: L("调 Java 接口", "Java API") },
+            { v: "eventCdc", l: L("事件 + CDC", "events + CDC") },
+          ]} />
+        </label>
+        <Slider label={L("训练集行数", "training rows")} min={1} max={200} value={trainRows} onChange={setTrainRows} unit={L(" 百万", "M")} />
+        <Slider label={L("业务库负载", "business load")} min={200} max={6000} step={100} value={bizQps} onChange={setBizQps} unit=" qps" />
+        <Slider label={L("在线打分速率", "online scoring")} min={10} max={2000} step={10} value={onlineRps} onChange={setOnlineRps} unit=" rps" />
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("训练拉数耗时", "training pull time")} value={pullTxt} tone={pullSec > 600 ? "bad" : pullSec > 120 ? "warn" : "ok"} hint={L(`${trainRows} 百万行`, `${trainRows}M rows`)} />
+        <Kpi label={L("业务库利用率", "business DB utilization")} value={overload ? "≥100%" : pct(rhoNow)} tone={rhoNow > 0.85 ? "bad" : rhoNow > 0.7 ? "warn" : "ok"} hint={L(`业务独占 ${pct(rhoBase)}`, `business alone ${pct(rhoBase)}`)} />
+        <Kpi label={L("业务 P99 恶化", "business P99 hit")} value={impactTxt} tone={overload || impactPct > 100 ? "bad" : impactPct > 30 ? "warn" : "ok"} hint={L("训练期间", "during the pull")} />
+        <Kpi label={L("schema 耦合", "schema coupling")} value={CFG.coup} tone={CFG.coupTone} hint={L(`在线时效 ${CFG.onlineMs}ms`, `online ${CFG.onlineMs}ms`)} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div className="sc-cap">{L(`业务库容量占用(总量 ${CAP} ops/s):蓝=业务,橙=训练扫描,灰=在线,余下=空闲`, `business DB capacity (total ${CAP} ops/s): blue=business, amber=training scan, grey=online, rest=free`)}</div>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", marginTop: 6 }}>
+          <rect x="0" y="4" width={W} height={H - 8} rx="4" fill="none" stroke="var(--hairline-strong)" />
+          <rect x="0" y="4" width={wBiz} height={H - 8} fill="var(--primary)" />
+          <rect x={wBiz} y="4" width={wScan} height={H - 8} fill="#d98a1f" />
+          <rect x={wBiz + wScan} y="4" width={wOn} height={H - 8} fill="var(--muted)" />
+          {overload
+            ? <line x1={W} y1="0" x2={W} y2={H} stroke="#c0453f" strokeWidth="2.5" />
+            : <rect x={W - wFree} y="4" width={wFree} height={H - 8} fill="color-mix(in srgb,#2e9e6b 12%,transparent)" />}
+          <line x1={W} y1="2" x2={W} y2={H - 2} stroke="var(--hairline-strong)" strokeDasharray="3 2" />
+        </svg>
+      </div>
+
+      <Note mark="→" tone={mode === "eventCdc" ? "on" : "bad"}>
+        {mode === "directDB"
+          ? L(`直连业务库:训练要拉 ${trainRows} 百万行,直接在 OLTP 上扫——${pullTxt}才拉完,而这段时间它和 ${bizQps} qps 的业务、${onlineRps} rps 的在线打分抢同一个库,利用率被推到 ${overload ? "≥100%(过载)" : pct(rhoNow)},业务 P99 恶化 ${impactTxt}。${overload ? "业务已经在雪崩边缘——你用一次训练拉数亲手打垮了交易系统。" : ""}再叠加裸表 schema 耦合(Java 改一次表你就崩)。这条就是红线,别走。`,
+              `Direct DB: pulling ${trainRows}M training rows scans the OLTP directly — ${pullTxt} to finish, and during that time it fights the ${bizQps} qps business and ${onlineRps} rps online scoring for the same DB, pushing utilization to ${overload ? "≥100% (overload)" : pct(rhoNow)} and degrading business P99 by ${impactTxt}. ${overload ? "The business is on the edge of a cascade — one training pull just took down the transactional system with your own hands. " : ""}Add raw-table schema coupling on top (the Java team migrates a table and you break). This is the red line — do not cross it.`)
+          : mode === "javaApi"
+            ? L(`调 Java 接口:在线打分调接口没问题,但用 REST 拉 ${trainRows} 百万行训练集要 ${pullTxt}——翻页 + 序列化太慢,而且请求最终还是落到业务库上(利用率 ${overload ? "≥100%" : pct(rhoNow)},P99 ${impactTxt})。接口适合「读少量当前态」,不适合批量历史。把训练读挪走,业务才喘得过气。`,
+                `Java API: calling the API for online scoring is fine, but pulling ${trainRows}M training rows over REST takes ${pullTxt} — pagination + serialization is slow, and the requests still land on the business DB in the end (utilization ${overload ? "≥100%" : pct(rhoNow)}, P99 ${impactTxt}). The API suits "read a little current state", not bulk history. Move the training read off it and the business can breathe.`)
+            : L(`事件 + CDC:在线用 Kafka 事件推送(${CFG.onlineMs}ms、解耦、不碰业务库),训练从分析库读——${pullTxt}拉完,列存快得多;业务库只承担 CDC 的一点点增量,利用率 ${pct(rhoNow)}、几乎回到业务独占的 ${pct(rhoBase)},P99 只 ${impactTxt}。schema 耦合也降到最低(事件契约 + 分析库稳定层)。这就是推荐架构:在线走事件、训练走 CDC→分析库、结果经 Java 回流。`,
+                `Events + CDC: online is pushed over Kafka (${CFG.onlineMs}ms, decoupled, never touching the business DB), and training reads from the analytics store — ${pullTxt} to pull, columnar and far faster; the business DB carries only CDC's small increment, so utilization is ${pct(rhoNow)}, nearly back to the business-alone ${pct(rhoBase)}, and P99 is only ${impactTxt}. Schema coupling drops to the minimum too (event contracts + a stable analytics layer). This is the recommended architecture: online via events, training via CDC→analytics store, results back through Java.`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module V–VI benches ---------------- */
 window.__SC_VIZ_3 = {
   streamLab: StreamViz,
@@ -591,4 +681,5 @@ window.__SC_VIZ_3 = {
   logLab: LogViz,
   mqLab: MqViz,
   sampleLab: SampleViz,
+  tsIntegLab: TsIntegViz,
 };

@@ -391,3 +391,42 @@ FIGN["sc33-sidecar"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc34 · data plane: events + CDC, not a shared DB ---------------- */
+FIGN["sc34-dataplane"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={300} cap={L("时序服务的数据平面。红线是禁止项:Python 不直连 Java 的业务 OLTP 库(schema 耦合、绕过校验、抢占交易资源)。在线走事件——Java 把遥测发到 Kafka,Python 订阅打分、把异常事件发回 Kafka,由告警/工单服务消费(带业务校验与幂等)。训练走 CDC:把 OLTP 增量同步到分析库(列存),Python 直连分析库读——连分析库是对的,它不是业务交易库。", "The time-series service's data plane. The red line is forbidden: Python does not connect to Java's business OLTP database directly (schema coupling, bypassed validation, contention for transactional resources). Online goes through events — Java publishes telemetry to Kafka, Python subscribes and scores and publishes anomaly events back for the alert/ticket service to consume (with validation and idempotency). Training goes through CDC: replicate OLTP increments into a columnar analytics store that Python connects to directly — connecting to the analytics store is correct, it is not the transactional DB.")}>
+      <FBox x={250} y={26} w={190} h={44} label={L("Java 业务微服务", "Java business svc")} sub={L("设备·计量·告警", "meters · alerts")} tone="p" />
+      <FBox x={275} y={80} w={140} h={28} label={L("OLTP 业务库", "OLTP business DB")} tone="n" />
+      <FBox x={250} y={150} w={190} h={44} label={L("Kafka 事件总线", "Kafka event bus")} sub="Spring Cloud Stream" tone="a" />
+      <FBox x={250} y={220} w={190} h={44} label={L("Python 时序服务", "Python TS service")} sub={L("FastAPI + 模型", "FastAPI + model")} tone="warn" />
+      <FBox x={500} y={80} w={150} h={30} label={L("CDC 增量", "CDC")} tone="m" />
+      <FBox x={500} y={150} w={150} h={44} label={L("分析库 OLAP", "analytics OLAP")} sub="ClickHouse / TSDB" tone="ok" />
+
+      {/* owns its data */}
+      <FArrow x1={345} y1={70} x2={345} y2={80} c="var(--muted)" />
+      {/* event flow (accent dashed) */}
+      <FArrow x1={430} y1={70} x2={430} y2={150} c="var(--accent)" wdt={1.6} dash />
+      <FT x={456} y={116} anchor="start" cls="tn">{L("发布遥测", "telemetry")}</FT>
+      <FArrow x1={268} y1={150} x2={268} y2={70} c="var(--accent)" wdt={1.6} dash />
+      <FT x={258} y={116} anchor="end" cls="tn">{L("异常回流", "anomaly")}</FT>
+      <FArrow x1={300} y1={194} x2={300} y2={220} c="var(--accent)" wdt={1.6} dash />
+      <FArrow x1={392} y1={220} x2={392} y2={194} c="var(--accent)" wdt={1.6} dash />
+      {/* data pipeline (green dashed) */}
+      <FArrow x1={415} y1={94} x2={500} y2={94} c="#2e9e6b" wdt={1.6} dash />
+      <FT x={457} y={88} cls="tn">CDC</FT>
+      <FArrow x1={575} y1={110} x2={575} y2={150} c="#2e9e6b" wdt={1.6} dash />
+      <FArrow x1={500} y1={180} x2={441} y2={244} c="#2e9e6b" wdt={1.6} dash />
+      <FT x={470} y={210} anchor="start" cls="tn">{L("训练读", "train read")}</FT>
+      {/* forbidden: python -> OLTP */}
+      <path d="M250 240 L212 240 L212 94 L275 94" fill="none" stroke="#c0453f" strokeWidth="1.6" strokeDasharray="5 4" />
+      <polygon points="275,94 268,90.5 268,97.5" fill="#c0453f" />
+      <g>
+        <line x1={205} y1={160} x2={219} y2={174} stroke="#c0453f" strokeWidth="2.4" />
+        <line x1={219} y1={160} x2={205} y2={174} stroke="#c0453f" strokeWidth="2.4" />
+      </g>
+      <FT x={150} y={150} cls="tn">{L("禁止直连业务库", "no direct link")}</FT>
+    </FigFrame>
+  );
+};
