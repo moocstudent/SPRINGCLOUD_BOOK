@@ -1127,3 +1127,99 @@ public PayResult charge(Charge c){ return bankApi.charge(c); }  // >2s counts ag
     },
   ],
 };
+
+/* ============ GW7 · sc33 — polyglot: Python + gateway + sidecar ============ */
+CODE.sc33 = {
+  note: {
+    zh: "第一段是那个 Python 服务本身(FastAPI):它对 Spring Cloud 一无所知,只暴露 HTTP 和一个 /actuator/health 供健康检查;末尾注释给出「直连 SDK」的另一条路——用 nacos-sdk-python 自注册。第二段是配置的两半:网关的两条路由(静态 uri 直转 vs lb:// 按服务名负载均衡),和 Sidecar 那个小 Spring Boot 应用的 application.yml——它替 Python 注册进 Nacos、并指向 Python 的健康检查地址,Python 一行都不用改。第三段是部署:docker-compose 把 Nacos、Python、Sidecar、网关连成一张网,并演示怎么把 Python 和它的 Sidecar 一起扩到 4 份——之后网关的 lb://python-service 会自动均摊到 4 个实例、并摘掉健康检查失败的那个。",
+    en: "The first listing is the Python (FastAPI) service itself: it knows nothing about Spring Cloud, only serving HTTP and a /actuator/health for health checks; the trailing comment shows the 'direct SDK' alternative — self-registering with nacos-sdk-python. The second is config in two halves: the gateway's two routes (a static uri forward vs lb:// load-balancing by service name), and the application.yml of the little Spring Boot sidecar app — which registers Python into Nacos and points at Python's health-check URL, with Python changing not a line. The third is deployment: a docker-compose wiring Nacos, Python, the sidecar and the gateway into one network, and showing how to scale Python and its sidecar to 4 — after which the gateway's lb://python-service spreads across all 4 and evicts whichever fails its health check.",
+  },
+  tabs: [
+    {
+      lang: "Python", k: "python", file: "main.py",
+      src: `# A plain Python (FastAPI) service. On its own it knows nothing about
+# Spring Cloud — it just serves HTTP and exposes a health endpoint.
+from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+@app.get("/actuator/health")          # the sidecar (or Nacos) polls this path
+def health():
+    return {"status": "UP"}           # anything but 200/UP => Nacos evicts this instance
+
+@app.get("/predict")
+def predict(x: float, request: Request):
+    trace = request.headers.get("traceparent")   # keep the W3C trace id flowing (see M6)
+    return {"y": x * 2, "trace": trace}
+
+# --- OPTION B: skip the sidecar and self-register (a few extra lines) ---
+# import nacos
+# cli = nacos.NacosClient("nacos:8848", namespace="public")
+# cli.add_naming_instance("python-service", "10.0.0.7", 8000, ephemeral=True)
+# # then a background task every 5s: cli.send_heartbeat("python-service","10.0.0.7",8000)`,
+    },
+    {
+      lang: "config (YAML)", k: "yaml", file: "application.yml",
+      src: `# === file: gateway/application.yml — two ways to reach Python ===
+spring:
+  cloud:
+    gateway:
+      routes:
+        # (1) STATIC — no registry. One fixed address: no LB, no health awareness.
+        - id: python-static
+          uri: http://python-host:8000
+          predicates: [ Path=/py/** ]
+          filters:  [ StripPrefix=1 ]         # /py/predict -> /predict
+        # (2) DISCOVERY — once Python is in Nacos, load-balance by name.
+        - id: python-lb
+          uri: lb://python-service            # lb:// picks a healthy instance
+          predicates: [ Path=/ai/** ]
+          filters:  [ StripPrefix=1 ]
+# JWT auth / rate-limit / CORS filters on these routes apply to Python too —
+# it inherits the edge's cross-cutting concerns for free, Java or Python alike.
+---
+# === file: python-sidecar/application.yml — spring-cloud-alibaba-sidecar ===
+# One tiny Spring Boot app per Python host. It registers Python FOR Python.
+server:
+  port: 8070                                  # the sidecar's own port
+spring:
+  application:
+    name: python-service                      # the name Python registers under
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos:8848
+sidecar:
+  ip: 10.0.0.7                                 # where Python actually listens
+  port: 8000
+  health-check-url: http://10.0.0.7:8000/actuator/health`,
+    },
+    {
+      lang: "deploy (compose)", k: "yaml", file: "docker-compose.yml",
+      src: `# The whole polyglot setup, wired. \`docker compose up\` and the gateway
+# reaches Python by name through Nacos — Python stays plain FastAPI.
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    environment: { MODE: standalone }
+    ports: [ "8848:8848" ]
+
+  python-service:                    # the plain FastAPI app — no Spring, no SDK
+    build: ./py
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    expose: [ "8000" ]
+
+  python-sidecar:                    # one sidecar per Python instance (baked application.yml)
+    image: my/spring-cloud-sidecar:1.0
+    depends_on: [ nacos, python-service ]
+
+  gateway:                           # the single edge entry point
+    image: my/gateway:1.0
+    ports: [ "8080:8080" ]
+    depends_on: [ nacos ]
+# scale out:  docker compose up --scale python-service=4 --scale python-sidecar=4
+# lb://python-service now spreads across all 4, and Nacos evicts any whose
+# /actuator/health stops answering — no gateway change, no Python change.`,
+    },
+  ],
+};

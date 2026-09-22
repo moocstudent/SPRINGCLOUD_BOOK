@@ -345,3 +345,49 @@ FIGN["sc32-tune"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc33 · polyglot: gateway + sidecar + Nacos ---------------- */
+FIGN["sc33-sidecar"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={252} cap={L("把一个 Python 服务接进 Spring Cloud。静态路由(上)最省事:网关写死一个地址直转,Python 零注册,却也没有负载均衡和健康摘除。要进服务发现,就让 Sidecar(下)——一个轻量 Spring Boot 小进程贴着 Python 跑——替它注册进 Nacos、替它对 /health 做健康检查;网关和别的 Java 服务这才能用 lb://python-service 按服务名找到它、均摊流量、自动摘除死实例。", "Onboarding a Python service into Spring Cloud. A static route (top) is the least effort: the gateway forwards to one hard-coded address, Python registers nothing — but there is no load balancing and no health eviction. To join discovery, let a sidecar (bottom) — a lightweight Spring Boot process running beside Python — register it into Nacos and health-check its /health; only then can the gateway and other Java services reach it by name via lb://python-service, spread traffic, and auto-evict a dead instance.")}>
+      {/* clients */}
+      <FBox x={18} y={104} w={80} h={44} label={L("客户端", "clients")} tone="m" />
+      {/* gateway */}
+      <FBox x={128} y={98} w={112} h={56} label={L("网关", "Gateway")} sub="edge proxy" tone="p" />
+      <FArrow x1={98} y1={126} x2={128} y2={126} c="var(--muted)" wdt={1.6} />
+
+      {/* --- top lane: static route --- */}
+      <FT x={470} y={20} cls="tn">{L("① 静态路由 · 不进注册中心", "① static route · no registry")}</FT>
+      <FBox x={420} y={30} w={150} h={40} label="Python" sub={L("uri: http://…:8000", "uri: http://…:8000")} tone="p" />
+      <FArrow x1={240} y1={104} x2={420} y2={52} c="var(--primary)" wdt={2} />
+      <FT x={332} y={70} cls="tk">{L("直转", "direct")}</FT>
+
+      {/* --- registry --- */}
+      <FBox x={286} y={104} w={116} h={48} label="Nacos" sub={L("实例表 · 健康", "instances · health")} tone="ok" />
+      <FArrow x1={240} y1={132} x2={286} y2={130} c="var(--muted)" wdt={1.4} dash />
+      <FT x={262} y={148} cls="tn">{L("查", "lookup")}</FT>
+
+      {/* --- bottom lane: sidecar registered --- */}
+      <FT x={508} y={168} cls="tn">{L("② Sidecar 注册 · lb://python-service", "② sidecar registered · lb://python-service")}</FT>
+      {/* fleet container */}
+      <rect x={418} y={176} width={244} height={70} rx="9" fill="none" stroke="var(--hairline-strong)" strokeWidth="1.2" strokeDasharray="5 4" />
+      <FT x={650} y={192} anchor="end" cls="tn">×N</FT>
+      <FBox x={430} y={198} w={92} h={38} label="Sidecar" sub="Spring Boot" tone="a" />
+      <FBox x={548} y={198} w={100} h={38} label="Python" sub="FastAPI" tone="p" />
+      {/* sidecar -> python (proxy + health) */}
+      <FArrow x1={522} y1={217} x2={548} y2={217} c="var(--muted)" wdt={1.4} />
+      <FT x={535} y={212} cls="tn">/health</FT>
+      {/* gateway -> sidecar (lb traffic) */}
+      <FArrow x1={210} y1={154} x2={430} y2={214} c="var(--primary)" wdt={2} />
+      <FT x={312} y={196} cls="tk">lb://</FT>
+      {/* sidecar -> nacos (register + heartbeat) */}
+      <FArrow x1={442} y1={198} x2={378} y2={152} c="#2e9e6b" wdt={1.6} dash />
+      <FT x={430} y={176} cls="tn">{L("注册+心跳", "register+beat")}</FT>
+
+      {/* other java service also discovers by name */}
+      <FBox x={128} y={196} w={112} h={44} label={L("其它 Java 服务", "other Java svc")} sub="Feign lb://" tone="m" />
+      <FArrow x1={240} y1={210} x2={430} y2={222} c="var(--muted)" wdt={1.4} dash />
+    </FigFrame>
+  );
+};

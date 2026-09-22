@@ -789,6 +789,90 @@ function BreakerTuneViz() {
   );
 }
 
+/* =========================================================
+   sc33 · sidecarLab — polyglot onboarding: static route vs
+   registration (sidecar / direct SDK), and what a dead
+   Python instance costs under each.
+   ========================================================= */
+function SidecarViz() {
+  const L = useL();
+  const [mode, setMode] = React.useState("static");   // static | sidecar | sdk
+  const [inst, setInst] = React.useState(4);          // Python instances started
+  const [rps, setRps] = React.useState(600);
+  const [heartbeat, setHeartbeat] = React.useState(5); // Nacos heartbeat interval (s)
+  const [missed, setMissed] = React.useState(3);       // missed beats before eviction
+  const [human, setHuman] = React.useState(10);        // minutes for a human to notice a static outage
+  const capPer = 250;                                  // assumed capacity per instance (rps)
+
+  const registered = mode !== "static";
+  const used = registered ? inst : 1;                  // instances the gateway can actually reach
+  const wasted = inst - used;
+  const effCap = used * capPer;
+  const fullCap = inst * capPer;
+  const ejectSec = heartbeat * missed;                 // detection window before Nacos evicts a dead node
+  const deadShare = registered ? rps / inst : rps;     // rps hitting the dead node
+  const lost = registered ? Math.round(deadShare * ejectSec)
+    : Math.round(rps * human * 60);
+  const healText = registered ? `${ejectSec}s` : `${human}min`;
+
+  return (
+    <div>
+      <VizHead idx="GW7" title={L("多语言接入:静态路由 vs 注册(Sidecar)——一个 Python 实例宕机时会怎样",
+        "Polyglot onboarding: static route vs registration (sidecar) — what one dead Python instance costs")} />
+      <div className="viz-ctrl">
+        <label><span>{L("接入方式", "integration mode")}</span>
+          <Seg value={mode} onChange={setMode} options={[
+            { v: "static", l: L("静态路由", "static route") },
+            { v: "sidecar", l: "Sidecar" },
+            { v: "sdk", l: L("直连 SDK", "direct SDK") },
+          ]} />
+        </label>
+        <Slider label={L("Python 实例数", "Python instances")} min={1} max={8} value={inst} onChange={setInst} />
+        <Slider label={L("请求速率", "request rate")} min={50} max={3000} step={50} value={rps} onChange={setRps} unit=" rps" />
+        {registered
+          ? <Slider label={L("心跳间隔", "heartbeat interval")} min={1} max={10} value={heartbeat} onChange={setHeartbeat} unit="s" />
+          : <Slider label={L("人工发现耗时", "time for a human to notice")} min={1} max={30} value={human} onChange={setHuman} unit="min" />}
+        {registered
+          ? <Slider label={L("判死心跳数", "missed beats to evict")} min={1} max={5} value={missed} onChange={setMissed} />
+          : null}
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("网关用到的实例", "instances the gateway uses")} value={`${used}/${inst}`} tone={used < inst ? "warn" : "ok"} hint={wasted > 0 ? L(`浪费 ${wasted} 个`, `${wasted} idle`) : L("全用上", "all in use")} />
+        <Kpi label={L("有效容量", "effective capacity")} value={effCap} unit=" rps" tone={effCap < fullCap ? "warn" : "ok"} hint={L(`满打满算 ${fullCap}`, `full would be ${fullCap}`)} />
+        <Kpi label={L("宕机自愈", "self-heal on death")} value={healText} tone={registered ? "ok" : "warn"} hint={registered ? L("自动摘除", "auto-evict") : L("要人工", "manual")} />
+        <Kpi label={L("一次宕机丢失请求", "requests lost per death")} value={nf(lost, 0)} tone={lost > 3000 ? "bad" : lost > 300 ? "warn" : "ok"} hint={registered ? L("仅检测窗口内", "detect window only") : L("直到人工修复", "until a human fixes it")} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div className="sc-cap">{L("你起的 Python 实例(绿=网关在用,灰=空转,✗=第一个实例宕机)", "the Python instances you started (green = gateway uses it, grey = idle, ✗ = first instance is down)")}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          {Array.from({ length: inst }).map((_, i) => {
+            const inUse = i < used, dead = i === 0;
+            const col = dead ? "#c0453f" : inUse ? "var(--primary)" : "var(--hairline-strong)";
+            return (
+              <div key={i} style={{
+                width: 62, height: 40, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                font: "600 10px var(--f-mono)", border: `1.4px solid ${col}`,
+                background: dead ? "color-mix(in srgb,#c0453f 10%,transparent)" : inUse ? "color-mix(in srgb,var(--primary) 8%,transparent)" : "transparent",
+                color: dead ? "#c0453f" : inUse ? "var(--primary)" : "var(--muted)",
+              }}>{dead ? "py ✗" : `py ${i + 1}`}</div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Note mark="→" tone={registered ? "on" : "bad"}>
+        {mode === "static"
+          ? L(`静态路由:网关里写死一条 uri: http://python-host:8000,请求直接转过去。Python 不用注册、不改一行代码,照样白嫖到网关的鉴权、限流、TLS、日志——对「只想给 Python 一个统一入口」来说,这就够了。但网关不认识你另外起的 ${inst > 1 ? inst - 1 : 0} 个实例,负载全压在一个地址上;那个地址一挂,整条路由就 502,直到有人发现(这里假设 ${human} 分钟),期间约 ${nf(lost, 0)} 个请求打了水漂。而且别的微服务没法用服务名(lb://python-service)调它,它也进不了统一的熔断与追踪。`,
+              `Static route: hard-code one uri: http://python-host:8000 in the gateway and requests forward straight through. Python registers nothing and changes not a line, yet still inherits the gateway's auth, rate limiting, TLS and logging — for "I just want one front door for Python", that is enough. But the gateway does not know about the other ${inst > 1 ? inst - 1 : 0} instances you started; all load lands on one address, and when it dies the whole route 502s until a human notices (${human} min assumed), losing ~${nf(lost, 0)} requests meanwhile. And other services cannot call it by name (lb://python-service), nor does it join the unified breaking and tracing.`)
+          : L(`${mode === "sidecar" ? "Sidecar:一个轻量 Spring Boot 小进程贴着 Python 跑,替它注册进 Nacos、替它对 /health 做健康检查,Python 零改动。" : "直连 SDK:Python 用 nacos-sdk-python 自己注册、自己发心跳,要改几行 Python,但不用额外进程。"}现在网关用 lb://python-service 把流量均摊到全部 ${inst} 个实例,有效容量 ${effCap} rps。一个实例宕机时,Nacos 在 ${ejectSec}s(${heartbeat}s × ${missed} 次漏跳)内把它摘掉,只有这个检测窗口里、打到这台的约 ${nf(lost, 0)} 个请求会失败(配上网关重试还能救回大半),之后流量自动重分到其余实例。它也真正成了注册表里的一等公民:别的服务能用服务名调它,能纳入统一的熔断、追踪与配置。`,
+              `${mode === "sidecar" ? "Sidecar: a lightweight Spring Boot process runs alongside Python, registering it into Nacos and health-checking its /health, with zero change to Python." : "Direct SDK: Python registers and heartbeats itself via nacos-sdk-python — a few lines of Python, no extra process."} The gateway now uses lb://python-service to spread traffic across all ${inst} instances, for ${effCap} rps of effective capacity. When one dies, Nacos evicts it within ${ejectSec}s (${heartbeat}s × ${missed} missed beats), and only the ~${nf(lost, 0)} requests that hit that node during the detection window fail (a gateway retry saves most); traffic then rebalances to the rest. It has become a first-class citizen of the registry: other services call it by name, and it joins the unified breaking, tracing and config.`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module III–IV benches ---------------- */
 window.__SC_VIZ_2 = {
   feignLab: FeignViz,
@@ -802,4 +886,5 @@ window.__SC_VIZ_2 = {
   dlimitLab: DlimitViz,
   driftLab: DriftViz,
   breakerTuneLab: BreakerTuneViz,
+  sidecarLab: SidecarViz,
 };

@@ -450,6 +450,27 @@ const CHAPTERS = [
       { zh: "纠偏:GitOps 自动回退 · 不可变基础设施", en: "Reconciliation: GitOps auto-revert · immutable infrastructure" },
     ],
   },
+  {
+    id: "sc33", code: "GW7", moduleId: "m4", difficulty: 2, hours: 5, prereq: ["sc10", "sc4"], viz: "sidecarLab",
+    props: ["多语言 / Polyglot 接入", "边缘代理 edge proxy", "静态路由 vs lb://", "Sidecar 边车", "Nacos 注册与健康检查"],
+    title: { zh: "多语言接入:把一个 Python 服务放进 Spring Cloud", en: "Polyglot Onboarding: Putting a Python Service into Spring Cloud" },
+    summary: {
+      zh: "你的团队不会只有 Java。总有一个用 Python 写的服务——一个模型推理、一段数据处理、一个早就写好的脚本——要和这套 Spring Cloud 系统协作。问题是:它不是 Spring 应用,不会自动注册到 Nacos,不发心跳,别的服务也不知道去哪找它。本章正面回答三个最常被问到的问题。第一,把网关当作边缘代理(edge proxy)、让所有外部流量只从网关这一个口进来,再把 Python 挂在它后面,会怎样?答案是:Python 立刻白嫖了网关的全部横切能力——统一 TLS、JWT 鉴权、限流、CORS、日志、灰度——一行都不用写。第二,Python 到底要不要注册到注册中心?不强制。网关可以用一条静态路由(uri: http://python-host:8000)直接把请求转过去,完全不碰 Nacos——最省事,但代价是网关不知道你起了几个 Python 实例、也不知道哪个挂了,负载均衡和健康摘除都没有。想要这些,Python 就得进 Nacos,而它自己不会,于是有了 Sidecar(边车)模式:一个轻量的 Spring Boot 小进程贴着 Python 跑,替它注册、替它对 /health 做健康检查、把 lb:// 的流量转进去——Python 零改动,却变成了注册表里的一等公民(想改代码也行,Python 直接用 nacos-sdk-python 自注册)。第三,Python 的 REST 接口能不能走 Spring Cloud 的总网关?能,网关在 HTTP 层是语言无关的,它只是反向代理加一条过滤器链,后端是 Java 还是 Python 无所谓;但要拿到本书那套完整治理,Python 还得守同样的约定——透传同一套链路追踪头(W3C traceparent,两边统一 OpenTelemetry 最省心)、信任或复验网关下发的 JWT、按需读 Nacos 配置。治理台把「静态路由 / Sidecar / 直连 SDK」三种接入方式摆在一起:同样起 N 个 Python 实例、其中一个宕机时,静态路由丢了多少请求、要等人工多久,注册进 Nacos 后又是多快自愈、只丢一个检测窗口的量。",
+      en: "Your team is never all Java. There is always a service written in Python — a model inference, a data pipeline, a script written long ago — that must cooperate with the Spring Cloud system. The problem: it is not a Spring app, it does not auto-register in Nacos, it sends no heartbeat, and other services have no idea where to find it. This chapter answers the three questions people ask most, head-on. First, if you use the gateway as an edge proxy — all external traffic entering through that single door — and hang Python behind it, what happens? Python immediately inherits the gateway's full set of cross-cutting concerns — unified TLS, JWT auth, rate limiting, CORS, logging, canary — without writing a line. Second, does Python actually need to register with the registry? Not necessarily. The gateway can forward with a single static route (uri: http://python-host:8000), never touching Nacos — the least effort, but at the cost that the gateway does not know how many Python instances you started or which one died: no load balancing, no health eviction. To get those, Python must enter Nacos, and it will not do so on its own — hence the sidecar pattern: a lightweight Spring Boot process runs alongside Python, registering it, health-checking its /health, and proxying lb:// traffic in — Python changes nothing yet becomes a first-class citizen of the registry (or, if you can edit the code, Python self-registers with nacos-sdk-python). Third, can Python's REST APIs go through Spring Cloud's overall gateway? Yes — the gateway is language-agnostic at the HTTP layer, just a reverse proxy plus a filter chain, indifferent to whether the backend is Java or Python; but to earn this book's full governance, Python must follow the same conventions — propagate the same tracing headers (W3C traceparent; unifying on OpenTelemetry across both sides is easiest), trust or re-validate the JWT the gateway issues, and read Nacos config where needed. The bench lays the three modes — static route / sidecar / direct SDK — side by side: with N Python instances and one of them dying, how many requests a static route loses and how long it waits for a human, versus how fast registration in Nacos self-heals, losing only one detection window's worth.",
+    },
+    objectives: [
+      { zh: "解释网关作为边缘代理时,Python 能白嫖哪些横切能力", en: "Explain which cross-cutting concerns Python inherits behind the gateway as edge proxy" },
+      { zh: "判断 Python 该用静态路由还是注册进 Nacos", en: "Decide between a static route and registering Python in Nacos" },
+      { zh: "用 Sidecar 让一个非 JVM 服务零改动进入服务发现", en: "Use a sidecar to bring a non-JVM service into discovery with zero code change" },
+      { zh: "说清 Python 要守哪些约定才能拿到追踪与鉴权", en: "State the conventions Python must follow to earn tracing and auth" },
+    ],
+    outline: [
+      { zh: "团队不只有 Java:那个 Python 服务怎么接", en: "Not just Java: onboarding that Python service" },
+      { zh: "边缘代理:一条静态路由就能白嫖网关", en: "Edge proxy: one static route already inherits the gateway" },
+      { zh: "要不要注册:Sidecar 让 Python 进 Nacos", en: "To register or not: the sidecar brings Python into Nacos" },
+      { zh: "守约定:追踪头、JWT、配置", en: "Follow the conventions: trace headers, JWT, config" },
+    ],
+  },
 
   /* ============ M5 · TX 消息、事务与一致性 ============ */
   {

@@ -18,6 +18,7 @@ const KW = {
   xml: "",
   properties: "true false",
   proto: "syntax package message repeated optional required reserved enum service rpc returns stream string int32 int64 uint32 uint64 sint32 bool bytes double float map option",
+  python: "def class return if elif else for while in import from as with try except finally raise yield lambda None True False and or not is async await pass break continue global nonlocal assert del",
 };
 const CODE_RE = {
   java: /(\/\*[\s\S]*?\*\/|\/\/[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*)|(@?[A-Za-z_][A-Za-z0-9_]*)/g,
@@ -28,6 +29,7 @@ const CODE_RE = {
   sh: /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*)|([A-Za-z_][A-Za-z0-9_]*)/g,
   xml: /(<!--[\s\S]*?-->)|("(?:[^"\n]*)")|(\b\d[\w.]*)|(<\/?[A-Za-z_][A-Za-z0-9_.:-]*|[A-Za-z_][A-Za-z0-9_.:-]*)/g,
   proto: /(\/\/[^\n]*)|("(?:\\.|[^"\\\n])*")|(\b\d[\w.]*)|([A-Za-z_][A-Za-z0-9_]*)/g,
+  python: /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*)|(@?[A-Za-z_][A-Za-z0-9_]*)/g,
 };
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 // Small, dependency-free highlighter: comments, strings, numbers, keywords.
