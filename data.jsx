@@ -578,6 +578,27 @@ const CHAPTERS = [
       { zh: "异常回流:结果写回也要经 Java", en: "Backflow: write results back through Java too" },
     ],
   },
+  {
+    id: "sc35", code: "TX6", moduleId: "m5", difficulty: 2, hours: 5, prereq: ["sc34"], viz: "dashPushLab",
+    props: ["Server→浏览器推送", "SSE vs WebSocket vs 轮询", "多实例扇出(共享消费组陷阱)", "Redis 广播 / 每实例组", "断线重连 + 首屏快照"],
+    title: { zh: "监控大屏怎么消费异常事件:轮询、SSE,还是 WebSocket?", en: "How the Dashboard Consumes Anomaly Events: Polling, SSE, or WebSocket?" },
+    summary: {
+      zh: "sc34 把异常事件发到了 Kafka,但事件躺在 topic 里没人看,不叫监控——它得实时出现在运维盯着的那块大屏上。问题来了:一块网页大屏,怎么实时拿到服务器不断产生的异常事件?新手的第一反应是让大屏每隔几秒轮询一次接口——能用,但它是「拉」:轮询太勤,就把服务器打满、而且大部分请求还是空的;轮询太疏,告警又延迟好几秒。大屏要的是「推」:服务器一有异常就主动送到浏览器。本章讲清三种 server→浏览器推送怎么选:轮询(简单但浪费且有延迟)、SSE(Server-Sent Events,服务器单向流式推、自带断线重连、就是普通 HTTP、能直接穿网关——对「只往大屏推」这种单向场景,是最省事的正解)、WebSocket(全双工,只有当大屏还要往回发指令/筛选时才需要它)。但选对传输只是第一步,真正让人半夜排查的是扩容陷阱:当你把推送服务扩到 M 个实例、它们又用同一个 Kafka 消费组时,每条异常只会被其中一个实例消费到——连在别的实例上的大屏就永远收不到这条告警,送达率直接掉到 1/M。开发时 M=1 一切正常,上线一扩容,告警就神秘丢失。解法是让每个实例用独立消费组(各收全量、本地扇出),或加一层 Redis 广播/Pub-Sub 把事件扇出给所有实例。最后是断线重连与首屏快照:大屏不能一刷新就白屏,连上先给它一份当前所有未处理告警的快照,再接续推增量。治理台让你选「轮询 / SSE·共享消费组 / SSE·广播」,调大屏数、实例数、异常率,看告警送达率、每条告警实际送到几块屏、端到端延迟、以及服务器空转请求怎么变化——你会看到共享消费组扩到 3 实例时,每条告警只有约 1/3 的大屏看得到。",
+      en: "sc34 published anomaly events to Kafka, but an event sitting in a topic that nobody watches is not monitoring — it has to appear in real time on the wall screen ops is staring at. The question: how does a web dashboard get, in real time, the anomaly events the server keeps producing? A newcomer's first instinct is to have the screen poll an endpoint every few seconds — it works, but it is a 'pull': poll too often and you saturate the server with mostly-empty requests; poll too rarely and alerts lag by seconds. A dashboard wants 'push': the moment there is an anomaly, the server sends it to the browser. This chapter makes clear how to choose among three server→browser transports: polling (simple but wasteful and laggy), SSE (Server-Sent Events — a one-way server stream with built-in reconnection, plain HTTP, passes straight through the gateway — the least-effort right answer for the one-way 'just push to the screen' case), and WebSocket (full-duplex, needed only when the screen must also send commands/filters back). But picking the transport is only step one; the trap that gets debugged at 3 a.m. is scaling: when you scale the push service to M instances that share one Kafka consumer group, each anomaly is consumed by exactly one instance — so screens connected to the other instances never receive that alert, and delivery drops to 1/M. With M=1 in dev everything works; scale out in prod and alerts mysteriously vanish. The fix is to give each instance its own consumer group (each gets the full stream and fans out locally), or add a Redis broadcast / Pub-Sub layer to fan events out to all instances. Finally, reconnection and a first-paint snapshot: the screen cannot go blank on refresh — on connect, hand it a snapshot of all currently-open alerts, then continue streaming increments. The bench lets you pick polling / SSE·shared-group / SSE·broadcast, tune screens, instances and event rate, and watch delivery rate, how many screens each alert actually reaches, end-to-end latency, and idle server requests — you will see that a shared consumer group scaled to 3 instances delivers each alert to only about 1/3 of the screens.",
+    },
+    objectives: [
+      { zh: "为大屏选对 server→浏览器的推送方式(轮询/SSE/WebSocket)", en: "Choose the right server→browser transport for a dashboard (polling/SSE/WebSocket)" },
+      { zh: "解释为什么扩容推送服务后大屏会漏报(共享消费组)", en: "Explain why screens miss alerts after the push service scales out (shared consumer group)" },
+      { zh: "用每实例独立消费组或 Redis 广播做正确扇出", en: "Fan out correctly with per-instance consumer groups or a Redis broadcast" },
+      { zh: "用断线重连 + 首屏快照让大屏不白屏、不漏事件", en: "Use reconnection + a first-paint snapshot so the screen never blanks or misses events" },
+    ],
+    outline: [
+      { zh: "大屏要的是「推」,不是「拉」", en: "A dashboard wants push, not pull" },
+      { zh: "三种传输:轮询 / SSE / WebSocket——大屏选 SSE", en: "Three transports: polling / SSE / WebSocket — a dashboard picks SSE" },
+      { zh: "扩容的陷阱:共享消费组让大屏漏报", en: "The scaling trap: a shared consumer group makes screens miss alerts" },
+      { zh: "断线重连与快照:大屏不能一刷新就白屏", en: "Reconnect and snapshot: the screen can't blank on refresh" },
+    ],
+  },
 
   /* ============ M6 · OB 可观测性 ============ */
   {

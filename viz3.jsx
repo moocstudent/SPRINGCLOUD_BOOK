@@ -671,6 +671,93 @@ function TsIntegViz() {
   );
 }
 
+/* =========================================================
+   sc35 · dashPushLab — how the dashboard consumes anomaly
+   events. polling vs SSE(shared consumer group) vs
+   SSE(broadcast). Exposes the fan-out trap: a shared group
+   across M instances delivers each alert to only 1/M screens.
+   ========================================================= */
+function DashPushViz() {
+  const L = useL();
+  const [mode, setMode] = React.useState("sseShared");   // polling | sseShared | sseBroadcast
+  const [clients, setClients] = React.useState(800);      // wall screens connected
+  const [instances, setInstances] = React.useState(3);    // push-service instances
+  const [eventRate, setEventRate] = React.useState(20);   // anomalies / s
+  const [interval, setInterval] = React.useState(5);      // polling interval (s)
+
+  const CFG = {
+    polling: { deliveryPct: 100, latencyMs: Math.round(interval * 500), idleReq: Math.round(clients / interval), safe: true },
+    sseShared: { deliveryPct: Math.round(100 / instances), latencyMs: 80, idleReq: 0, safe: instances === 1 },
+    sseBroadcast: { deliveryPct: 100, latencyMs: 95, idleReq: 0, safe: true },
+  }[mode];
+
+  const reached = Math.round(clients * CFG.deliveryPct / 100);
+  const lit = mode === "sseShared" ? 1 : instances;   // instances whose screens receive an alert
+
+  return (
+    <div>
+      <VizHead idx="TX6" title={L("监控大屏消费异常事件:扩容后,一条告警还能送到几块屏?",
+        "The dashboard consuming anomaly events: after scaling out, how many screens still get an alert?")} />
+      <div className="viz-ctrl">
+        <label><span>{L("推送方式", "delivery")}</span>
+          <Seg value={mode} onChange={setMode} options={[
+            { v: "polling", l: L("轮询", "polling") },
+            { v: "sseShared", l: L("SSE·共享组", "SSE·shared") },
+            { v: "sseBroadcast", l: L("SSE·广播", "SSE·broadcast") },
+          ]} />
+        </label>
+        <Slider label={L("大屏数", "wall screens")} min={10} max={5000} step={10} value={clients} onChange={setClients} />
+        <Slider label={L("推送实例数", "push instances")} min={1} max={8} value={instances} onChange={setInstances} />
+        {mode === "polling"
+          ? <Slider label={L("轮询间隔", "poll interval")} min={1} max={30} value={interval} onChange={setInterval} unit="s" />
+          : <Slider label={L("异常事件率", "anomaly rate")} min={1} max={200} value={eventRate} onChange={setEventRate} unit="/s" />}
+      </div>
+
+      <div className="sc-kpi-grid" style={{ marginTop: 12 }}>
+        <Kpi label={L("告警送达率", "alert delivery")} value={`${CFG.deliveryPct}%`} tone={CFG.deliveryPct >= 100 ? "ok" : CFG.deliveryPct >= 50 ? "warn" : "bad"} hint={CFG.safe ? L("扩容安全", "scale-safe") : L("扩容漏报", "misses on scale")} />
+        <Kpi label={L("每条告警送达", "screens per alert")} value={nf(reached, 0)} unit={L(" 块", "")} tone={reached >= clients ? "ok" : reached >= clients / 2 ? "warn" : "bad"} hint={L(`共 ${nf(clients, 0)} 块`, `of ${nf(clients, 0)}`)} />
+        <Kpi label={L("端到端延迟", "end-to-end latency")} value={CFG.latencyMs >= 1000 ? nf(CFG.latencyMs / 1000, 1) : CFG.latencyMs} unit={CFG.latencyMs >= 1000 ? " s" : " ms"} tone={CFG.latencyMs > 1000 ? "bad" : CFG.latencyMs > 300 ? "warn" : "ok"} hint={mode === "polling" ? L("≈间隔的一半", "≈half the interval") : L("推,即时", "push, instant")} />
+        <Kpi label={L("服务器空转请求", "idle server load")} value={nf(CFG.idleReq, 0)} unit=" req/s" tone={CFG.idleReq > 200 ? "bad" : CFG.idleReq > 50 ? "warn" : "ok"} hint={mode === "polling" ? L("多为空响应", "mostly empty") : L("推送不轮询", "push, no polling")} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div className="sc-cap">{L(`${instances} 个推送实例,每个约 ${nf(clients / instances, 0)} 块屏(绿=收到告警,红=漏报)`, `${instances} push instances, ~${nf(clients / instances, 0)} screens each (green = gets the alert, red = misses it)`)}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          {Array.from({ length: instances }).map((_, i) => {
+            const ok = i < lit;
+            const col = ok ? "var(--primary)" : "#c0453f";
+            return (
+              <div key={i} style={{
+                minWidth: 74, height: 42, borderRadius: 8, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", font: "600 10px var(--f-mono)",
+                border: `1.4px solid ${col}`, color: col,
+                background: ok ? "color-mix(in srgb,var(--primary) 8%,transparent)" : "color-mix(in srgb,#c0453f 10%,transparent)",
+              }}>
+                <span>{L("实例", "inst")} {i + 1}</span>
+                <span style={{ fontSize: 9, opacity: 0.85 }}>{ok ? L("收到", "gets it") : L("漏报", "misses")}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Note mark="→" tone={mode === "sseBroadcast" ? "on" : mode === "sseShared" && !CFG.safe ? "bad" : "on"}>
+        {mode === "polling"
+          ? L(`轮询:${nf(clients, 0)} 块大屏每 ${interval}s 拉一次,服务器要扛 ${nf(CFG.idleReq, 0)} req/s——而在 ${eventRate}/s 的异常率下,绝大多数请求是空响应,纯浪费;告警最坏要等 ${nf(CFG.latencyMs, 0)}ms(间隔的一半)才上屏。它唯一的好处是无状态、没有扇出问题(每次拉都从共享快照读)。屏少、实时性要求不高时能用;大屏一多,这个 req/s 会把网关和服务压垮。`,
+              `Polling: ${nf(clients, 0)} screens pull every ${interval}s, so the server carries ${nf(CFG.idleReq, 0)} req/s — and at ${eventRate}/s anomalies, the vast majority are empty responses, pure waste; an alert waits up to ${nf(CFG.latencyMs, 0)}ms (half the interval) to appear. Its one virtue is being stateless with no fan-out problem (each pull reads a shared snapshot). Fine for few screens and loose latency; with many screens this req/s crushes the gateway and service.`)
+          : mode === "sseShared"
+            ? (CFG.safe
+              ? L(`SSE·共享消费组,但只有 1 个实例:现在每条告警都送到全部 ${nf(clients, 0)} 块屏、即时、服务器几乎零空转——看起来完美。但这只是因为 M=1。别被骗了:一旦扩容,同一个消费组会把每条异常只交给其中一个实例,连在别的实例上的屏就收不到了。把「推送实例数」往上拉一格,看送达率怎么塌。`,
+                  `SSE with a shared consumer group, but only 1 instance: every alert reaches all ${nf(clients, 0)} screens, instantly, with near-zero idle load — looks perfect. But that is only because M=1. Do not be fooled: scale out and the shared group hands each anomaly to just one instance, and screens on the others miss it. Nudge 'push instances' up one and watch delivery collapse.`)
+              : L(`SSE·共享消费组 + ${instances} 个实例——这就是那个半夜排查的 bug。同一个消费组下,每条异常只被 1 个实例消费到,于是只有连在那个实例上的约 ${nf(reached, 0)} 块屏收到告警,其余 ${nf(clients - reached, 0)} 块永远看不到——送达率 ${CFG.deliveryPct}%。开发时 M=1 一切正常,上线扩容,告警就「随机丢失」。修法:要么每个实例用独立消费组(各收全量、本地扇出给自己的连接),要么加一层 Redis 广播。切到「SSE·广播」看正确的样子。`,
+                  `SSE with a shared consumer group + ${instances} instances — this is the 3 a.m. bug. Under one group, each anomaly is consumed by just one instance, so only the ~${nf(reached, 0)} screens on that instance get the alert and the other ${nf(clients - reached, 0)} never see it — ${CFG.deliveryPct}% delivery. With M=1 in dev all is well; scale out in prod and alerts 'randomly vanish'. Fix: give each instance its own consumer group (each gets the full stream and fans out to its own connections), or add a Redis broadcast. Switch to 'SSE·broadcast' to see it right.`))
+            : L(`SSE·广播:一个共享消费者从 Kafka 收异常,经 Redis Pub/Sub(或每实例独立消费组)把每条事件扇出给全部 ${instances} 个实例,于是不管大屏连在哪个实例上,${nf(clients, 0)} 块全部即时收到、送达率 100%,服务器也不用空转轮询。这就是给大屏推实时告警的正解:SSE 单向流 + 广播扇出。再叠加断线重连(SSE 自带)和首屏快照,大屏就既不白屏也不漏报。`,
+                `SSE broadcast: one shared consumer reads anomalies from Kafka and, via Redis Pub/Sub (or a per-instance consumer group), fans each event out to all ${instances} instances, so no matter which instance a screen is on, all ${nf(clients, 0)} receive it instantly at 100% delivery, with no idle polling. This is the right way to push real-time alerts to screens: a one-way SSE stream + broadcast fan-out. Add SSE's built-in reconnection and a first-paint snapshot, and the screen neither blanks nor misses.`)}
+      </Note>
+    </div>
+  );
+}
+
 /* ---------------- export Module V–VI benches ---------------- */
 window.__SC_VIZ_3 = {
   streamLab: StreamViz,
@@ -682,4 +769,5 @@ window.__SC_VIZ_3 = {
   mqLab: MqViz,
   sampleLab: SampleViz,
   tsIntegLab: TsIntegViz,
+  dashPushLab: DashPushViz,
 };

@@ -1310,3 +1310,76 @@ snapshot.mode=when_needed
     },
   ],
 };
+
+/* ============ TX6 · sc35 — dashboard consumes anomaly events (SSE) ============ */
+CODE.sc35 = {
+  note: {
+    zh: "第一段是 Java 推送服务:一个共享消费者从 Kafka 收异常,推进一个 multicast 的 Sinks.Many,再由 SSE 端点把它扇出给每一个连着的浏览器——SSE 流先发一份「当前所有未处理告警」的快照(首屏不白),再接续推增量,并给每条事件带 id 以支持断线后按 Last-Event-ID 续传。第二段是大屏前端:一行 new EventSource 就订上了流,浏览器自带断线自动重连,全程没有一处 setInterval 轮询。第三段是网关:SSE 就是流式 HTTP,配一条路由即可,但千万别缓冲响应(否则网关会把事件攒到流结束才吐);注释里给出扩容扇出的两种正确做法——每实例独立消费组,或 Redis 广播。",
+    en: "The first listing is the Java push service: one shared consumer reads anomalies from Kafka into a multicast Sinks.Many, and an SSE endpoint fans them out to every connected browser — the SSE stream first sends a snapshot of all currently-open alerts (no blank first paint), then streams increments, tagging each event with an id so a dropped client resumes by Last-Event-ID. The second is the dashboard front end: one line of new EventSource subscribes to the stream, the browser reconnects on its own, and there is no setInterval polling anywhere. The third is the gateway: SSE is just streaming HTTP, one route does it, but never buffer the response (or the gateway holds events until the stream ends); the comments give the two correct fan-out options for scaling — a per-instance consumer group, or a Redis broadcast.",
+  },
+  tabs: [
+    {
+      lang: "Java (SSE)", k: "java", file: "AlertStream.java",
+      src: `// One shared consumer reads anomalies; a multicast sink fans them out to
+// every connected browser's SSE stream.
+@RestController
+class AlertStream {
+    private final AlertStore store;
+    private final Sinks.Many<Anomaly> sink =
+        Sinks.many().multicast().onBackpressureBuffer();
+    AlertStream(AlertStore store){ this.store = store; }
+
+    // Kafka anomaly events -> push into the sink (Stream binding, see TX1)
+    @Bean Consumer<Anomaly> meterAnomalyIn() {
+        return a -> sink.tryEmitNext(a);          // fan out to all SSE subscribers
+    }
+
+    // each dashboard opens ONE long-lived SSE connection here
+    @GetMapping(path = "/alerts/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    Flux<ServerSentEvent<Anomaly>> stream() {
+        return Flux.concat(store.openAlerts(),     // first paint: current open alerts
+                           sink.asFlux())          // then the live increment
+            .map(a -> ServerSentEvent.builder(a).id(a.id()).build());  // id -> Last-Event-ID resume
+    }
+}`,
+    },
+    {
+      lang: "大屏 (JS)", k: "js", file: "dashboard.js",
+      src: `// The wall screen opens ONE SSE stream. The browser auto-reconnects on drop,
+// and Last-Event-ID lets the server resume from where it left off.
+const es = new EventSource('/api/alerts/stream');
+
+es.onmessage = function (e) {
+    const a = JSON.parse(e.data);      // {id, meter_id, ts, score}
+    addAlertRow(a);                    // render onto the board
+};
+
+es.onerror = function () {
+    // EventSource reconnects on its own — just show a "reconnecting" badge.
+    setStatus('reconnecting');
+};
+
+// No setInterval polling anywhere: the server pushes. On a full refresh the
+// stream re-opens and the snapshot repaints the board, so it never goes blank.`,
+    },
+    {
+      lang: "gateway (YAML)", k: "yaml", file: "application.yml",
+      src: `# SSE is just streaming HTTP — one route, but DO NOT buffer the response,
+# or the gateway holds every event until the stream ends (i.e. forever).
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: alerts-sse
+          uri: lb://dashboard-push
+          predicates: [ Path=/api/alerts/** ]
+          # WebSocket instead? use a ws:// uri and Path=/ws/**
+
+# FAN-OUT across instances (the trap): a shared Kafka group delivers each
+# anomaly to ONE instance only, so screens on the others miss it. Fix either:
+#   spring.cloud.stream.bindings.meterAnomalyIn-in-0.group: push-<per-instance>
+#   ^ a UNIQUE group per instance  => every instance gets every event
+# or broadcast via Redis Pub/Sub so all instances receive all events.`,
+    },
+  ],
+};

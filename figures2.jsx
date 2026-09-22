@@ -430,3 +430,42 @@ FIGN["sc34-dataplane"] = function ({ idx }) {
     </FigFrame>
   );
 };
+
+/* ---------------- sc35 · dashboard push: SSE + broadcast fan-out ---------------- */
+FIGN["sc35-dashboard"] = function ({ idx }) {
+  const L = useL();
+  return (
+    <FigFrame idx={idx} h={248} cap={L("把异常事件推到监控大屏。一个共享消费者从 Kafka 收异常,经 Redis 广播(Pub/Sub)把每条事件扇出给全部推送实例——于是不管大屏连在哪个实例上都收得到。推送用 SSE(服务器单向流、自带断线重连、就是普通 HTTP,直接穿网关);大屏只往回发筛选指令时才升级到 WebSocket。陷阱:若 M 个实例共用一个 Kafka 消费组,每条异常只被一个实例消费到,别的实例上的大屏就漏报——所以要广播或每实例独立消费组。", "Pushing anomaly events to the wall screens. One shared consumer reads anomalies from Kafka and, via a Redis broadcast (Pub/Sub), fans each event out to every push instance — so a screen receives it no matter which instance it is on. Delivery uses SSE (a one-way server stream with built-in reconnection, plain HTTP, straight through the gateway); upgrade to WebSocket only when the screen must send filters back. The trap: if M instances share one Kafka consumer group, each anomaly is consumed by only one instance and screens on the others miss it — so broadcast, or give each instance its own group.")}>
+      <FBox x={24} y={40} w={120} h={44} label="Kafka" sub="meter.anomaly" tone="a" />
+      <FBox x={24} y={120} w={120} h={44} label={L("Redis 广播", "Redis broadcast")} sub="Pub/Sub" tone="m" />
+      {/* push instances */}
+      <rect x={186} y={30} width={188} height={186} rx="10" fill="none" stroke="var(--hairline-strong)" strokeWidth="1.2" strokeDasharray="5 4" />
+      <FT x={366} y={44} anchor="end" cls="tn">{L("×M 实例", "×M")}</FT>
+      <FBox x={196} y={50} w={168} h={40} label={L("推送服务", "push svc")} sub="SSE stream" tone="p" />
+      <FBox x={196} y={104} w={168} h={40} label={L("推送服务", "push svc")} sub="SSE stream" tone="p" />
+      <FBox x={196} y={158} w={168} h={40} label={L("推送服务", "push svc")} sub="SSE stream" tone="p" />
+      {/* gateway */}
+      <FBox x={410} y={104} w={104} h={48} label={L("网关", "Gateway")} sub={L("SSE 透传", "SSE passthru")} tone="p" />
+      {/* screens */}
+      <rect x={540} y={54} width={100} height={144} rx="10" fill="none" stroke="var(--hairline-strong)" strokeWidth="1.2" strokeDasharray="5 4" />
+      <FT x={590} y={48} cls="tn">{L("大屏 ×N", "screens ×N")}</FT>
+      <FBox x={550} y={66} w={80} h={30} label={L("大屏", "screen")} tone="warn" />
+      <FBox x={550} y={108} w={80} h={30} label={L("大屏", "screen")} tone="warn" />
+      <FBox x={550} y={150} w={80} h={30} label={L("大屏", "screen")} tone="warn" />
+
+      {/* kafka -> redis */}
+      <FArrow x1={84} y1={84} x2={84} y2={120} c="var(--muted)" />
+      {/* redis broadcast -> every instance */}
+      <FArrow x1={144} y1={136} x2={196} y2={70} c="var(--accent)" wdt={1.6} dash />
+      <FArrow x1={144} y1={140} x2={196} y2={124} c="var(--accent)" wdt={1.6} dash />
+      <FArrow x1={144} y1={144} x2={196} y2={178} c="var(--accent)" wdt={1.6} dash />
+      <FT x={168} y={108} cls="tn">{L("广播", "fan-out")}</FT>
+      {/* push -> gateway (SSE) */}
+      <FArrow x1={364} y1={126} x2={410} y2={128} c="var(--accent)" wdt={1.6} />
+      <FT x={387} y={120} cls="tn">SSE</FT>
+      {/* gateway -> screens */}
+      <FArrow x1={514} y1={124} x2={550} y2={110} c="var(--accent)" wdt={1.6} />
+      <FArrow x1={514} y1={128} x2={550} y2={158} c="var(--accent)" wdt={1.6} dash />
+    </FigFrame>
+  );
+};
